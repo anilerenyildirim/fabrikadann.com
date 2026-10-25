@@ -30,6 +30,9 @@ async function buildSitemap(): Promise<MetadataRoute.Sitemap> {
   return [
     { url: `${siteUrl}/`, changeFrequency: "daily", priority: 1 },
     { url: `${siteUrl}/urunler`, changeFrequency: "daily", priority: 0.9 },
+    ...["hakkimizda", "sss", "iletisim", "iade-degisim", "kvkk", "cerez-politikasi", "mesafeli-satis", "on-bilgilendirme"].map(
+      (p) => ({ url: `${siteUrl}/${p}`, changeFrequency: "monthly" as const, priority: 0.3 }),
+    ),
     ...categories.map((c) => ({
       url: `${siteUrl}/kategori/${c.slug}`,
       changeFrequency: "weekly" as const,

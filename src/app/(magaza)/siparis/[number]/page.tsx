@@ -154,6 +154,16 @@ function PaymentNotice({ order, result }: { order: OrderWithItems; result?: stri
       </div>
     );
   }
+  if (result === "bekleniyor") {
+    return (
+      <div className="mb-8">
+        <FormNotice tone="info">
+          Ödemenizin sonucu bankadan bekleniyor. Birkaç dakika içinde bu sayfa güncellenir; kartınızdan çekim
+          yapıldıysa ayrıca işlem yapmanız gerekmez.
+        </FormNotice>
+      </div>
+    );
+  }
   if (result === "baslatilamadi") {
     return (
       <div className="mb-8">

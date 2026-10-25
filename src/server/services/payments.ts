@@ -122,6 +122,7 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
 }
 
 async function sendOrderConfirmation(orderId: string) {
+  const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId), with: { items: true } });
   if (!order) return;
   const lines = order.items.map(
@@ -141,6 +142,13 @@ async function sendOrderConfirmation(orderId: string) {
       `Toplam: ${formatPrice(order.total)}`,
       "",
       "Kargoya verildiğinde takip numarasını ayrıca göndereceğiz.",
+      `Siparişinizi buradan izleyebilirsiniz: ${appUrl}/siparis/${order.number}`,
+      "",
+      "Siparişinize ait ön bilgilendirme formu ve mesafeli satış sözleşmesi (onay tarihiyle birlikte):",
+      `${appUrl}/on-bilgilendirme`,
+      `${appUrl}/mesafeli-satis`,
+      `Onay zamanı: ${order.termsAcceptedAt.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}`,
+      "",
       "fabrikadann",
     ].join("\n"),
   });
@@ -198,4 +206,16 @@ export async function reconcilePendingPayments(
     }
   }
   return settled;
+}
+
+/** Sağlayıcının ödeme oturumu kimliğinden sipariş numarası (dönüş sayfasının yönlendirmesi için). */
+export async function findOrderNumberByProviderSession(provider: string, providerSession: string) {
+  if (!providerSession || providerSession.length > 200) return null;
+  const [row] = await db
+    .select({ orderNumber: orders.number })
+    .from(payments)
+    .innerJoin(orders, eq(orders.id, payments.orderId))
+    .where(and(eq(payments.provider, provider), eq(payments.providerSession, providerSession)))
+    .limit(1);
+  return row?.orderNumber ?? null;
 }
