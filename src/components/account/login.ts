@@ -1,8 +1,8 @@
 import "server-only";
 import { rateLimit } from "@/server/auth/rate-limit";
-import { authenticate } from "@/server/services/accounts";
+import { authenticate, sendVerificationEmail } from "@/server/services/accounts";
 import { audit } from "@/server/services/audit";
-import { LOGIN_FAILED, tooManyAttempts } from "./schemas";
+import { EMAIL_NOT_VERIFIED, LOGIN_FAILED, tooManyAttempts } from "./schemas";
 
 /*
   Giriş denemesinin çerezden bağımsız kısmı (hız sınırı + parola kontrolü).
@@ -41,6 +41,12 @@ export async function attemptLogin(email: string, password: string, ip: string):
     */
     await audit({ action: "admin.login.store_rejected", actorId: user.id, target: email, ip });
     return { ok: false, error: LOGIN_FAILED };
+  }
+  if (!user.emailVerifiedAt) {
+    // Bu yanıt yalnızca doğru parolayı bilen birine görünür; bağlantı en fazla saatte 3 kez yeniden gönderilir
+    const resend = await rateLimit(`dogrulama:${user.id}`, 3, 3600);
+    if (resend.ok) await sendVerificationEmail(user.id, process.env.APP_URL ?? "http://localhost:3000");
+    return { ok: false, error: EMAIL_NOT_VERIFIED };
   }
   return { ok: true, user: { id: user.id, role: user.role } };
 }

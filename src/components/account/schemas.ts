@@ -43,6 +43,12 @@ export function tooManyAttempts(retryAfterSec: number): string {
 
 export const LOGIN_FAILED = "E-posta ya da parola hatalı.";
 
+export const EMAIL_NOT_VERIFIED =
+  "E-posta adresinizi henüz doğrulamadınız. Size yeni bir doğrulama bağlantısı gönderdik; e-postanızı kontrol edin.";
+
+export const REGISTERED =
+  "Neredeyse tamam. E-posta adresinize bir doğrulama bağlantısı gönderdik; hesabınızı etkinleştirmek için bağlantıyı açın. E-posta birkaç dakika içinde gelmezse gereksiz klasörünü kontrol edin.";
+
 export const RESET_REQUESTED =
   "Bu e-postayla kayıtlı bir hesap varsa, parola sıfırlama bağlantısını gönderdik. Bağlantı 1 saat geçerli.";
 

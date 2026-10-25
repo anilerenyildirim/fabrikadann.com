@@ -13,7 +13,9 @@ const EMAIL = "ayse@ornek.com";
 
 async function register() {
   const r = await registerCustomer({ email: EMAIL, password: PW, firstName: "Ayşe", lastName: "Yılmaz" });
-  if (!r.ok) throw new Error(r.error);
+  if (!r.ok || !r.value.created) throw new Error("kayıt başarısız");
+  // Testlerde e-posta doğrulaması atlanır
+  await db.update(schema.users).set({ emailVerifiedAt: new Date() }).where(eq(schema.users.id, r.value.id));
   return r.value.id;
 }
 
@@ -40,6 +42,7 @@ test("aynı e-postaya çok deneme: farklı IP'lerden gelse de sınırlanır, do�
 
   // Başka bir hesap etkilenmez
   await registerCustomer({ email: "mehmet@ornek.com", password: PW, firstName: "Mehmet", lastName: "Kaya" });
+  await db.update(schema.users).set({ emailVerifiedAt: new Date() }).where(eq(schema.users.email, "mehmet@ornek.com"));
   expect((await attemptLogin("mehmet@ornek.com", PW, "10.0.2.1")).ok).toBe(true);
 });
 

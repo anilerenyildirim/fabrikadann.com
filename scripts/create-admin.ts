@@ -110,6 +110,7 @@ async function main() {
         firstName,
         lastName,
         role: "admin",
+        emailVerifiedAt: new Date(),
         totpSecret: sealSecret(totpSecret),
         totpLastStep: null,
       })
@@ -133,7 +134,7 @@ async function main() {
       if (problem) fail(`ADMIN_PASSWORD uygun değil: ${problem}`);
       await db
         .update(schema.users)
-        .set({ role: "admin", passwordHash: await hashPassword(password) })
+        .set({ role: "admin", passwordHash: await hashPassword(password), emailVerifiedAt: new Date() })
         .where(eq(schema.users.id, userId));
       // Müşteri olarak açılmış (30 günlük) oturumlar yönetici yetkisiyle devam etmesin
       await deleteUserSessions(userId);

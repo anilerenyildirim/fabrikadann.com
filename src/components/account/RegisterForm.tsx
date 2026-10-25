@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { registerAction } from "@/app/(magaza)/actions/auth";
-import { Button, Checkbox, TextField } from "@/components/ui/form";
+import { Button, Checkbox, FormNotice, TextField } from "@/components/ui/form";
 import type { FormState } from "@/lib/form";
 import { StateNotice, useFocusFirstError } from "./form-helpers";
 import { PasswordField } from "./PasswordField";
@@ -13,6 +13,17 @@ export function RegisterForm({ returnTo }: { returnTo?: string }) {
   const ref = useFocusFirstError(state);
   const errors = state.fieldErrors ?? {};
   const v = state.values ?? {};
+
+  if (state.ok) {
+    return (
+      <div role="status" className="flex flex-col gap-6">
+        <FormNotice tone="info">{state.message}</FormNotice>
+        <Link href="/giris" className="label inline-flex min-h-11 items-center underline underline-offset-4">
+          Giriş sayfasına dön
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form ref={ref} action={action} noValidate className="flex flex-col gap-6">

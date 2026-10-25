@@ -7,12 +7,19 @@ import { env } from "@/env";
 import { fieldErrorsOf, safeValues, type FormState } from "@/lib/form";
 import { getClientIp, signOut } from "@/server/auth/current";
 import { rateLimit } from "@/server/auth/rate-limit";
-import { registerCustomer, requestPasswordReset, resetPassword } from "@/server/services/accounts";
+import {
+  registerCustomer,
+  requestPasswordReset,
+  resetPassword,
+  sendRegistrationEmail,
+  verifyEmail,
+} from "@/server/services/accounts";
 import { attemptLogin, FORGOT_LIMITS, REGISTER_LIMIT, RESET_LIMIT } from "@/components/account/login";
 import {
   forgotSchema,
   loginSchema,
   readFields,
+  REGISTERED,
   registerSchema,
   RESET_REQUESTED,
   resetSchema,
@@ -57,12 +64,40 @@ export async function registerAction(_prev: FormState, form: FormData): Promise<
         ? { fieldErrors: { [created.field]: created.error }, values }
         : { error: created.error, values };
     }
-    await startSession({ id: created.value.id, role: "customer" });
+    // Yeni hesap da var olan hesap da aynı yanıtı alır; e-posta yanıttan sonra gönderilir (süre farkı olmasın)
+    const outcome = created.value;
+    after(() =>
+      sendRegistrationEmail(outcome, env.APP_URL).catch((e) => logError("[kayit] e-posta gönderilemedi", e)),
+    );
   } catch (e) {
     logError("[kayit]", e);
     return { error: GENERIC_ERROR, values };
   }
-  redirect(returnPath(parsed.data.sonra));
+  return { ok: true, message: REGISTERED };
+}
+
+const VERIFY_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/** E-postadaki bağlantıyla açılan sayfanın "Hesabımı etkinleştir" butonu. */
+export async function verifyEmailAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const token = readFields(form, ["token"]).token;
+  if (!VERIFY_TOKEN_RE.test(token)) return { error: "Bağlantı geçersiz. E-postadaki bağlantıyı yeniden açın." };
+  try {
+    const limited = await rateLimit(`dogrula:${await getClientIp()}`, 20, 900);
+    if (!limited.ok) return { error: tooManyAttempts(limited.retryAfter) };
+    const user = await verifyEmail(token);
+    if (!user) {
+      return {
+        error:
+          "Bağlantı geçersiz, kullanılmış ya da süresi dolmuş. Giriş yapmayı deneyin; hesabınız doğrulanmamışsa yeni bağlantı gönderilir.",
+      };
+    }
+    await startSession(user);
+  } catch (e) {
+    logError("[dogrula]", e);
+    return { error: GENERIC_ERROR };
+  }
+  redirect("/hesabim?dogrulandi=1");
 }
 
 export async function forgotPasswordAction(_prev: FormState, form: FormData): Promise<FormState> {

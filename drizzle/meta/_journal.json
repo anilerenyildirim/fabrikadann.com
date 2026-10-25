@@ -22,6 +22,13 @@
       "when": 1792960095309,
       "tag": "0002_iptal_nedeni_ve_mutabakat",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792965674329,
+      "tag": "0003_eposta_dogrulama",
+      "breakpoints": true
     }
   ]
 }

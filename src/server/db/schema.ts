@@ -51,6 +51,8 @@ export const users = pgTable(
     totpSecret: text("totp_secret"),
     // Aynı TOTP kodunun ikinci kez kullanılmasını engeller
     totpLastStep: integer("totp_last_step"),
+    // Kayıtta e-posta sahipliği doğrulanana kadar giriş yapılamaz (hesap numaralandırmayı da önler)
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -74,6 +76,16 @@ export const sessions = pgTable(
 );
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {
+  idHash: text("id_hash").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
   idHash: text("id_hash").primaryKey(),
   userId: uuid("user_id")
     .notNull()

@@ -21,14 +21,32 @@ const PW = "Kuvvetli-Parola-42";
 
 async function register(email = "Ayse@Ornek.com") {
   const r = await registerCustomer({ email, password: PW, firstName: "Ayşe", lastName: "Yılmaz" });
-  if (!r.ok) throw new Error(r.error);
+  if (!r.ok || !r.value.created) throw new Error("kayıt başarısız");
+  // Testlerde e-posta doğrulaması atlanır
+  await db.update(schema.users).set({ emailVerifiedAt: new Date() }).where(eq(schema.users.id, r.value.id));
   return r.value.id;
 }
 
-test("kayıt e-postayı küçültür, aynı e-posta ikinci kez kaydolamaz", async () => {
+test("kayıt e-postayı küçültür; aynı e-postayla ikinci kayıt hesap açmaz ve bunu yanıtta ele vermez", async () => {
   await register();
   const again = await registerCustomer({ email: "ayse@ornek.com ", password: PW, firstName: "A", lastName: "B" });
-  expect(again.ok).toBe(false);
+  expect(again).toEqual({ ok: true, value: { created: false, email: "ayse@ornek.com" } });
+  expect(await db.select().from(schema.users)).toHaveLength(1);
+});
+
+test("yeni hesap doğrulanana kadar giriş yapamaz; bağlantı tek kullanımlık", async () => {
+  const { sendVerificationEmail, verifyEmail } = await import("@/server/services/accounts");
+  const { attemptLogin } = await import("@/components/account/login");
+  const r = await registerCustomer({ email: "yeni@ornek.com", password: PW, firstName: "Yeni", lastName: "Kişi" });
+  if (!r.ok || !r.value.created) throw new Error("kayıt başarısız");
+  const blocked = await attemptLogin("yeni@ornek.com", PW, "10.9.9.9");
+  expect(blocked.ok).toBe(false);
+  if (!blocked.ok) expect(blocked.error).toMatch(/doğrulamadınız/);
+  const token = (await sendVerificationEmail(r.value.id, "http://x"))!;
+  expect(await verifyEmail("uydurma")).toBeNull();
+  expect(await verifyEmail(token)).toEqual({ id: r.value.id, role: "customer" });
+  expect(await verifyEmail(token)).toBeNull();
+  expect((await attemptLogin("yeni@ornek.com", PW, "10.9.9.9")).ok).toBe(true);
 });
 
 test("doğru parola girer, yanlış ve bilinmeyen e-posta girmez", async () => {
