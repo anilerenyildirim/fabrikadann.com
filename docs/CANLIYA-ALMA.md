@@ -33,6 +33,7 @@ gunzip -c fabrikadann.tar.gz | docker load
 NODE_ENV=production
 APP_URL=https://fabrikadann.com
 POSTGRES_PASSWORD=<uzun rastgele; yalnızca harf, rakam, - ve _ (URL'ye gömülür)>
+APP_DB_PASSWORD=<ayrı, uzun rastgele; uygulamanın kısıtlı veritabanı rolü için>
 SESSION_SECRET=<node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))">
 PAYMENT_PROVIDER=mock          # iyzico entegrasyonu eklenince: iyzico
 CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
