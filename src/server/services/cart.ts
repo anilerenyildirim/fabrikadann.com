@@ -240,7 +240,15 @@ export async function mergeGuestCart(guestToken: string, userId: string): Promis
     const guestItems = await tx.select().from(cartItems).where(eq(cartItems.cartId, guestId));
     if (guestItems.length > 0) {
       const userCartId = await ensureCartId({ userId }, tx);
+      const existing = await tx.select({ variantId: cartItems.variantId }).from(cartItems).where(eq(cartItems.cartId, userCartId));
+      const known = new Set(existing.map((e) => e.variantId));
+      let lines = known.size;
       for (const item of guestItems) {
+        // Sepet satır sınırı birleştirmede de geçerli
+        if (!known.has(item.variantId)) {
+          if (lines >= MAX_LINES) continue;
+          lines++;
+        }
         await tx
           .insert(cartItems)
           .values({ cartId: userCartId, variantId: item.variantId, quantity: Math.min(item.quantity, MAX_QTY_PER_LINE) })

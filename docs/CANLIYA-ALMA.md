@@ -28,10 +28,10 @@ gunzip -c fabrikadann.tar.gz | docker load
 ```env
 NODE_ENV=production
 APP_URL=https://fabrikadann.com
-POSTGRES_PASSWORD=<uzun rastgele>
+POSTGRES_PASSWORD=<uzun rastgele; yalnızca harf, rakam, - ve _ (URL'ye gömülür)>
 SESSION_SECRET=<node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))">
 PAYMENT_PROVIDER=mock          # iyzico entegrasyonu eklenince: iyzico
-CLIENT_IP_HEADER=x-real-ip     # Cloudflare kullanılırsa: cf-connecting-ip
+CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
 SMTP_URL=smtps://kullanici:parola@smtp.saglayici.com:465
 MAIL_FROM="fabrikadann <siparis@fabrikadann.com>"
 ```
@@ -67,11 +67,15 @@ bırakılır; yine de düzenli çalıştırın:
 
 ## 6. Yedekleme (zorunlu)
 
-Sipariş verisi en kritik varlıktır. Her gece veritabanı ve görseller sunucu dışına yedeklenmeli:
+Sipariş verisi en kritik varlıktır. Her gece veritabanı ve görseller yedeklenmeli. Komut önce geçici
+dosyaya yazar; yedek boşsa ya da komut başarısızsa günlüğe "BAŞARISIZ" yazar (sessizce boş yedek oluşmaz):
 
 ```cron
-30 3 * * * docker compose -f /srv/fabrikadann/deploy/docker-compose.prod.yml exec -T db pg_dump -U fabrikadann -Fc fabrikadann > /yedek/db-$(date +\%F).dump
+30 3 * * * C="docker compose -f /srv/fabrikadann/deploy/docker-compose.prod.yml --env-file /srv/fabrikadann/.env.production"; F=/yedek/db-$(date +%F).dump; $C exec -T db pg_dump -U fabrikadann -Fc fabrikadann > $F.tmp 2>>/var/log/fabrikadann-yedek.log && test -s $F.tmp && mv $F.tmp $F || echo "$(date) DB YEDEGI BASARISIZ" >> /var/log/fabrikadann-yedek.log
+45 3 * * * F=/yedek/gorseller-$(date +%F).tgz; docker run --rm -v deploy_uploads:/u:ro -v /yedek:/b alpine tar czf /b/$(basename $F).tmp -C /u . 2>>/var/log/fabrikadann-yedek.log && mv $F.tmp $F || echo "$(date) GORSEL YEDEGI BASARISIZ" >> /var/log/fabrikadann-yedek.log
 ```
+
+(`deploy_uploads` adı compose proje adından gelir; `docker volume ls` ile doğrulayın.)
 
 Yedekleri sunucu dışına (ör. başka bir bulut depolama) kopyalayın ve geri yüklemeyi en az bir kez deneyin.
 
@@ -86,11 +90,11 @@ docker compose ... up -d app
 
 ## 8. Canlıya çıkmadan önce yapılacaklar
 
-- [ ] iyzico üye işyeri anlaşması → `src/server/payments` altına Checkout Form adaptörü, `PAYMENT_PROVIDER=iyzico`, CSP `form-action`'a iyzico alan adı.
+- [ ] iyzico üye işyeri anlaşması → `.env.production`'a `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_BASE_URL=https://api.iyzipay.com` ve `PAYMENT_PROVIDER=iyzico`. Adaptör (`src/server/payments/iyzico.ts`) ve dönüş adresi (`/api/odeme/iyzico`) hazır; önce sandbox anahtarlarıyla uçtan uca deneyin. Bakım betiği (5 dk) sonucu tarayıcıyla dönmeyen ödemeleri iyzico'ya sorar.
 - [ ] Yasal metinlerin (mesafeli satış, ön bilgilendirme, KVKK, çerez, iade) avukat kontrolü; iade kargo koşulunun belirlenmesi.
 - [ ] Ayarlar'dan şirket bilgileri.
 - [ ] Gerçek ürün fotoğrafları (4:5 dikey oran, en az 1600 px genişlik önerilir).
 - [ ] SMTP (sipariş ve parola e-postaları için) — SPF/DKIM kayıtları.
-- [ ] Alan adı DNS'i sunucuya (Cloudflare kullanılacaksa proxy açık + `CLIENT_IP_HEADER=cf-connecting-ip`).
+- [ ] Alan adı DNS'i sunucuya: yalnızca A kaydı (Docker IPv6 kurulmadan AAAA yayımlamayın). Cloudflare kullanılacaksa proxy açık + `deploy/Caddyfile`'daki `trusted_proxies` bloğu açık; `CLIENT_IP_HEADER=x-real-ip` kalır.
 - [ ] Yedeklemenin çalıştığının doğrulanması.
 - [ ] e-Fatura/e-Arşiv entegrasyonu (muhasebe sürecinize göre).

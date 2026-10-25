@@ -15,6 +15,13 @@
       "when": 1792956866929,
       "tag": "0001_totp_last_step",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792960095309,
+      "tag": "0002_iptal_nedeni_ve_mutabakat",
+      "breakpoints": true
     }
   ]
 }

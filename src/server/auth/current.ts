@@ -1,4 +1,5 @@
 import "server-only";
+import { isIP } from "node:net";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -34,7 +35,8 @@ export async function getCurrentUser() {
 export async function signOut() {
   const token = await readSessionToken();
   if (token) await deleteSession(token);
-  (await cookies()).delete(SESSION_COOKIE);
+  // __Host- çerezi yalnızca Secure özniteliğiyle silinebilir
+  (await cookies()).delete({ name: SESSION_COOKIE, path: "/", secure, httpOnly: true, sameSite: "lax" });
 }
 
 /** Giriş yapılmamışsa giriş sayfasına yönlendirir. */
@@ -61,7 +63,26 @@ export async function getClientIp(): Promise<string> {
   const h = await headers();
   const name = process.env.CLIENT_IP_HEADER?.toLowerCase() || "x-forwarded-for";
   const raw = h.get(name);
-  if (!raw) return "0.0.0.0";
+  if (!raw) return "bilinmiyor";
   const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
-  return (name === "x-forwarded-for" ? parts.at(-1) : parts[0]) ?? "0.0.0.0";
+  const ip = (name === "x-forwarded-for" ? parts.at(-1) : parts[0]) ?? "";
+  return normalizeIp(ip);
+}
+
+/**
+ * Hız sınırı anahtarı için IP: geçersizse sabit bir kova; IPv6 adresleri /64 önekine indirgenir
+ * (tek bir /64 bloğuna sahip saldırgan her istekte farklı adres kullanamasın).
+ */
+export function normalizeIp(ip: string): string {
+  const v = isIP(ip);
+  if (v === 4) return ip;
+  if (v === 6) {
+    if (ip.toLowerCase().startsWith("::ffff:") && isIP(ip.slice(7)) === 4) return ip.slice(7);
+    const [head = "", tail = ""] = ip.toLowerCase().split("::");
+    const left = head ? head.split(":") : [];
+    const right = tail ? tail.split(":") : [];
+    const groups = [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right];
+    return `${groups.slice(0, 4).map((g) => g.padStart(4, "0")).join(":")}::/64`;
+  }
+  return "gecersiz";
 }

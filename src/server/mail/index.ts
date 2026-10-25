@@ -8,6 +8,11 @@ let transport: ReturnType<typeof nodemailer.createTransport> | undefined;
 export async function sendMail(mail: Mail): Promise<void> {
   const url = process.env.SMTP_URL;
   if (!url) {
+    if (process.env.NODE_ENV === "production") {
+      // Canlıda içerik (sıfırlama bağlantısı, adres) loglara yazılmaz
+      console.error(`[e-posta] SMTP_URL tanımlı değil; gönderilemedi: ${mail.subject}`);
+      return;
+    }
     if (process.env.NODE_ENV !== "test") {
       console.info(`\n[e-posta] Kime: ${mail.to}\nKonu: ${mail.subject}\n\n${mail.text}\n`);
     }

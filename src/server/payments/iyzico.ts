@@ -127,11 +127,11 @@ export function createIyzicoProvider(getShippingFee: (orderId: string) => Promis
     async start(input) {
       const body = buildInitializeRequest(input, await getShippingFee(input.order.id));
       const res = await call<InitResponse>(INIT_PATH, body);
-      if (res.status !== "success" || !res.paymentPageUrl) {
+      if (res.status !== "success" || !res.paymentPageUrl || !res.token) {
         console.error("iyzico başlatma hatası", res.errorMessage);
         throw new Error("Ödeme sayfası açılamadı");
       }
-      return { redirectUrl: res.paymentPageUrl };
+      return { redirectUrl: res.paymentPageUrl, providerSessionId: res.token };
     },
   };
 }
@@ -141,6 +141,9 @@ export async function retrieveIyzicoOutcome(iyzicoToken: string): Promise<Paymen
   if (!/^[A-Za-z0-9-]{10,100}$/.test(iyzicoToken)) return null;
   const res = await call<DetailResponse>(DETAIL_PATH, { locale: "tr", token: iyzicoToken });
   if (res.status !== "success" || !res.conversationId || res.price === undefined) return null;
+  // Henüz sonuçlanmamış (3DS sürüyor) ya da dolandırıcılık incelemesinde: karar verme, sonra yeniden sorgulanır
+  if (res.paymentStatus !== "SUCCESS" && res.paymentStatus !== "FAILURE") return null;
+  if (res.paymentStatus === "SUCCESS" && res.fraudStatus === 0) return null;
   return {
     token: res.conversationId,
     // fraudStatus: 1 onaylı, 0 incelemede, -1 reddedildi

@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: fabrikadann
+      # Parola URL'ye gömülür: yalnızca harf, rakam, - ve _ kullanın (ör. base64url)
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD gerekli}
       POSTGRES_DB: fabrikadann
     volumes:
@@ -28,9 +29,11 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     depends_on: [app]
+    # Yalnızca IPv4: Docker IPv6 ağı kurulmadan IPv6 bağlantıları ağ geçidi IP'siyle görünür
+    # (tüm IPv6 ziyaretçileri tek IP sayılır). AAAA kaydı yayımlamayın.
     ports:
-      - "80:80"
-      - "443:443"
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

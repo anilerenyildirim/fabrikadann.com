@@ -9,7 +9,8 @@ export type ImageWidth = (typeof IMAGE_WIDTHS)[number];
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 8000 * 8000;
-const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp", "avif", "heif"]);
+// HEIC: sharp'ın hazır paketleri HEVC çözemiyor; kabul edilmez
+const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp", "avif"]);
 
 // Anahtar biçimi: "p/<uuid>" — dosya yolu buradan türetilir, dışarıdan gelen yol kullanılmaz
 const KEY_RE = /^p\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -42,22 +43,24 @@ export async function storeProductImage(input: Buffer): Promise<StoredImage> {
     throw new ImageError("Dosya bir görsel değil ya da bozuk.");
   }
   if (!meta.format || !ALLOWED_FORMATS.has(meta.format)) {
-    throw new ImageError("Yalnızca JPEG, PNG, WebP, AVIF ya da HEIC yüklenebilir.");
+    throw new ImageError("Yalnızca JPEG, PNG, WebP ya da AVIF yüklenebilir. iPhone fotoğraflarını JPEG olarak dışa aktarın.");
   }
   if (!meta.width || !meta.height || meta.width < 300 || meta.height < 300) {
     throw new ImageError("Görsel en az 300×300 piksel olmalı.");
   }
+  // EXIF yönü 5–8 ise görsel 90° döndürülecek: genişlik/yükseklik yer değiştirir
+  const rotated = (meta.orientation ?? 1) >= 5;
+  const width = rotated ? meta.height : meta.width;
+  const height = rotated ? meta.width : meta.height;
 
   const id = randomUUID();
   await mkdir(path.join(uploadRoot(), "p"), { recursive: true });
-  // Telefon fotoğraflarının yönünü EXIF'e göre düzelt, sonra meta veriyi at
-  const base = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).rotate();
-  const oriented = await base.clone().toBuffer({ resolveWithObject: true });
-  const { width, height } = oriented.info;
-
   try {
     for (const w of IMAGE_WIDTHS) {
-      const out = await sharp(oriented.data)
+      // Her boyut doğrudan özgün dosyadan üretilir (ara yeniden kodlama yok); rotate() yönü
+      // EXIF'e göre düzeltir, çıktıya meta veri (konum vb.) yazılmaz
+      const out = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS })
+        .rotate()
         .resize({ width: Math.min(w, width), withoutEnlargement: true })
         .webp({ quality: 82 })
         .toBuffer();
@@ -65,7 +68,8 @@ export async function storeProductImage(input: Buffer): Promise<StoredImage> {
     }
   } catch (e) {
     await deleteProductImage(`p/${id}`);
-    throw e;
+    console.error("Görsel işlenemedi", e);
+    throw new ImageError("Görsel işlenemedi. Dosya bozuk olabilir; başka bir dosya deneyin.");
   }
   return { key: `p/${id}`, width, height };
 }

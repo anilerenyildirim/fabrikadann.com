@@ -33,6 +33,7 @@ export const orderStatus = pgEnum("order_status", [
   "refunded",
 ]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed"]);
+export const cancelReason = pgEnum("cancel_reason", ["payment_expired", "admin"]);
 export const stockReason = pgEnum("stock_reason", ["order", "cancel", "manual", "trendyol", "initial"]);
 
 // ---------- Kullanıcılar ve oturumlar ----------
@@ -267,6 +268,8 @@ export const orders = pgTable(
     shippingFee: integer("shipping_fee").notNull(),
     total: integer("total").notNull(),
     status: orderStatus("status").notNull().default("awaiting_payment"),
+    // Süresi dolan sipariş geç gelen ödemeyle canlanabilir; yönetici iptali canlanmaz
+    cancelReason: cancelReason("cancel_reason"),
     paymentExpiresAt: timestamp("payment_expires_at", { withTimezone: true }).notNull(),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     carrier: text("carrier"),
@@ -280,6 +283,8 @@ export const orders = pgTable(
     uniqueIndex("orders_number_idx").on(t.number),
     index("orders_user_idx").on(t.userId),
     index("orders_status_idx").on(t.status),
+    index("orders_open_ip_idx").on(t.termsAcceptedIp, t.status),
+    index("orders_open_email_idx").on(t.email, t.status),
   ],
 );
 
@@ -314,6 +319,8 @@ export const payments = pgTable(
     providerRef: text("provider_ref"),
     // Sağlayıcıya iletilen tek kullanımlık ödeme oturumu kimliği
     token: text("token").notNull(),
+    // Sağlayıcının ödeme oturumu kimliği (iyzico Checkout Form token'ı) — mutabakat sorgusu için
+    providerSession: text("provider_session"),
     amount: integer("amount").notNull(),
     status: paymentStatus("status").notNull().default("pending"),
     raw: jsonb("raw"),

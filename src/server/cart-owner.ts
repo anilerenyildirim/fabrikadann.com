@@ -41,5 +41,5 @@ export async function getGuestCartToken(): Promise<string | null> {
 }
 
 export async function clearGuestCartCookie(): Promise<void> {
-  (await cookies()).delete(GUEST_CART_COOKIE);
+  (await cookies()).delete({ name: GUEST_CART_COOKIE, path: "/", secure, httpOnly: true, sameSite: "lax" });
 }

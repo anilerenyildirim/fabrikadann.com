@@ -1,13 +1,37 @@
+{
+	# Cloudflare kullanılıyorsa aşağıdaki bloğu açın: istemci IP'si yalnızca Cloudflare'den gelen
+	# bağlantılarda CF-Connecting-IP'den alınır; doğrudan sunucuya gelen sahte başlıklar yok sayılır.
+	# Güncel aralıklar: https://www.cloudflare.com/ips/
+	# servers {
+	# 	trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	# 	client_ip_headers CF-Connecting-IP
+	# }
+}
+
 fabrikadann.com, www.fabrikadann.com {
 	@www host www.fabrikadann.com
 	redir @www https://fabrikadann.com{uri} permanent
 
 	encode zstd gzip
-	request_body {
-		max_size 15MB
+
+	# Büyük gövde yalnızca yönetim panelindeki görsel yüklemelerinde
+	@yonetim path /yonetim /yonetim/*
+	request_body @yonetim {
+		max_size 13MB
 	}
-	# Uygulama istemci IP'sini bu başlıktan okur (CLIENT_IP_HEADER=x-real-ip)
+	@diger not path /yonetim /yonetim/*
+	request_body @diger {
+		max_size 256KB
+	}
+
+	# Kullanılmayan görsel optimize edicisi dışarıya kapalı
+	respond /_next/image* 404
+
+	# Uygulama istemci IP'sini yalnızca bu başlıktan okur (CLIENT_IP_HEADER=x-real-ip).
+	# {client_ip}: güvenilir vekil yoksa bağlantının gerçek kaynak adresi.
 	reverse_proxy app:3000 {
-		header_up X-Real-IP {remote_host}
+		header_up X-Real-IP {client_ip}
+		header_up -CF-Connecting-IP
+		header_up -X-Forwarded-For
 	}
 }

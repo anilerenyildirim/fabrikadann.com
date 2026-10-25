@@ -1,15 +1,18 @@
 import { randomInt } from "node:crypto";
-import { and, asc, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, or, sql } from "drizzle-orm";
 import { db, schema, type Tx } from "@/server/db";
 import type { AddressSnapshot } from "@/server/db/schema";
 import { randomToken, sha256 } from "@/server/auth/crypto";
 import { clearCart, computeShipping, loadCartLines, type CartOwner } from "./cart";
 import { getSettings } from "./settings";
 import { returnStock, takeStock } from "./stock";
+import { audit } from "./audit";
 
 const { orders, orderItems, carts } = schema;
 
 export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
+export const MAX_ITEMS_PER_ORDER = 10;
+export const MAX_OPEN_ORDERS = 2;
 
 export type OrderStatus = (typeof schema.orderStatus.enumValues)[number];
 
@@ -34,7 +37,7 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 export class OrderError extends Error {
   constructor(
-    public code: "empty_cart" | "cart_problems" | "out_of_stock" | "not_found" | "invalid_transition" | "missing_tracking",
+    public code: "empty_cart" | "cart_problems" | "out_of_stock" | "too_many_items" | "too_many_open_orders" | "not_found" | "invalid_transition" | "missing_tracking",
     message: string,
     public details: string[] = [],
   ) {
@@ -65,7 +68,8 @@ export type CreatedOrder = { id: string; number: string; total: number; guestAcc
  * kopyalanır, sepet boşaltılır. Herhangi bir kalem için stok yetmezse hiçbir şey değişmez.
  */
 export async function createOrder(owner: CartOwner, input: CreateOrderInput): Promise<CreatedOrder> {
-  await releaseExpiredOrders();
+  // Temizlik hatası bu müşterinin siparişini engellemesin
+  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
   const settings = await getSettings();
 
   return db.transaction(async (tx) => {
@@ -82,6 +86,34 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
         "cart_problems",
         "Sepetinizdeki bazı ürünler artık satın alınamıyor.",
         problems.map((p) => `${p.productName} (${p.size})`),
+      );
+    }
+
+    // Ödenmemiş siparişlerle stok kilitlenmesini sınırla: sipariş başına adet ve kişi başına açık sipariş
+    const totalQuantity = lines.reduce((n, l) => n + l.quantity, 0);
+    if (totalQuantity > MAX_ITEMS_PER_ORDER) {
+      throw new OrderError("too_many_items", `Bir siparişte en fazla ${MAX_ITEMS_PER_ORDER} çift alınabilir.`);
+    }
+    // Aynı IP'den eşzamanlı siparişler sıraya girsin ki sayım doğru olsun
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`siparis:${input.ip}`}))`);
+    const [open] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.status, "awaiting_payment"),
+          gt(orders.paymentExpiresAt, new Date()),
+          or(
+            eq(orders.termsAcceptedIp, input.ip),
+            eq(orders.email, input.email),
+            input.userId ? eq(orders.userId, input.userId) : undefined,
+          ),
+        ),
+      );
+    if ((open?.n ?? 0) >= MAX_OPEN_ORDERS) {
+      throw new OrderError(
+        "too_many_open_orders",
+        "Ödemesi tamamlanmamış siparişleriniz var. Önce onları tamamlayın ya da 30 dakika sonra yeniden deneyin.",
       );
     }
 
@@ -143,7 +175,8 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
 
 async function restockOrder(tx: Tx, orderId: string, number: string, reason: "cancel" | "order", actorId?: string) {
   const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-  for (const item of items) {
+  // createOrder ile aynı kilit sırası (kilitlenme olmasın)
+  for (const item of [...items].sort((a, b) => (a.variantId ?? "").localeCompare(b.variantId ?? ""))) {
     if (item.variantId) {
       await returnStock(tx, item.variantId, item.quantity, { reason, reference: number, actorId });
     }
@@ -163,7 +196,7 @@ export async function releaseExpiredOrders(): Promise<number> {
       // Durum koşullu güncellenir: aynı anda ödeme onayı gelirse yalnızca biri kazanır
       const [cancelled] = await tx
         .update(orders)
-        .set({ status: "cancelled" })
+        .set({ status: "cancelled", cancelReason: "payment_expired" })
         .where(and(eq(orders.id, id), eq(orders.status, "awaiting_payment"), lt(orders.paymentExpiresAt, new Date())))
         .returning({ id: orders.id, number: orders.number });
       if (cancelled) {
@@ -181,7 +214,8 @@ export async function releaseExpiredOrders(): Promise<number> {
  */
 export async function tryReviveCancelledOrder(tx: Tx, orderId: string): Promise<boolean> {
   const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
-  if (!order || order.status !== "cancelled" || order.paidAt) return false;
+  // Yalnızca süre dolması yüzünden iptal edilenler canlanır; yöneticinin iptali kalıcıdır
+  if (!order || order.status !== "cancelled" || order.paidAt || order.cancelReason !== "payment_expired") return false;
   const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
   for (const item of [...items].sort((a, b) => (a.variantId ?? "").localeCompare(b.variantId ?? ""))) {
     if (!item.variantId) return false;
@@ -191,7 +225,13 @@ export async function tryReviveCancelledOrder(tx: Tx, orderId: string): Promise<
   return true;
 }
 
-export type TransitionOptions = { carrier?: string; trackingNumber?: string; restock?: boolean };
+export type TransitionOptions = {
+  carrier?: string;
+  trackingNumber?: string;
+  restock?: boolean;
+  /** Ekranda görülen durum; bu arada değiştiyse (ör. ödeme geldiyse) işlem reddedilir */
+  expectedFrom?: OrderStatus;
+};
 
 export async function transitionOrder(
   orderId: string,
@@ -202,6 +242,12 @@ export async function transitionOrder(
   await db.transaction(async (tx) => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
     if (!order) throw new OrderError("not_found", "Sipariş bulunamadı.");
+    if (opts.expectedFrom && opts.expectedFrom !== order.status) {
+      throw new OrderError(
+        "invalid_transition",
+        `Sipariş bu arada "${ORDER_STATUS_LABELS[order.status]}" durumuna geçti. Sayfayı yenileyip tekrar deneyin.`,
+      );
+    }
     if (!ALLOWED_TRANSITIONS[order.status].includes(to)) {
       throw new OrderError(
         "invalid_transition",
@@ -218,9 +264,14 @@ export async function transitionOrder(
       patch.carrier = carrier;
       patch.trackingNumber = trackingNumber;
     }
+    if (to === "cancelled") patch.cancelReason = "admin";
     await tx.update(orders).set(patch).where(eq(orders.id, orderId));
     const restock = to === "cancelled" || (to === "refunded" && opts.restock !== false);
     if (restock) await restockOrder(tx, order.id, order.number, "cancel", actorId);
+    // Parası alınmış sipariş iptal/iade edildiyse panoda "iade gerekli" olarak görünsün
+    if (order.paidAt && (to === "cancelled" || to === "refunded")) {
+      await audit({ action: "payment.needs_refund", actorId, target: order.number, data: { reason: to } }, tx);
+    }
   });
 }
 

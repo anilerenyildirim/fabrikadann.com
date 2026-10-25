@@ -34,9 +34,11 @@ export function currentTotp(secret: string): string {
  */
 export async function verifyTotpForUser(userId: string, secret: string, code: string): Promise<boolean> {
   if (!/^\d{6}$/.test(code)) return false;
-  const delta = totpFor(secret).validate({ token: code, window: 1 });
+  // Doğrulama ve adım hesabı aynı zamandan yapılır (pencere sınırında yanlış adım kaydedilmesin)
+  const now = Date.now();
+  const delta = totpFor(secret).validate({ token: code, window: 1, timestamp: now });
   if (delta === null) return false;
-  const step = Math.floor(Date.now() / 1000 / PERIOD) + delta;
+  const step = Math.floor(now / 1000 / PERIOD) + delta;
   const updated = await db
     .update(schema.users)
     .set({ totpLastStep: step })

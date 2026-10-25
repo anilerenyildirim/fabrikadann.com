@@ -16,6 +16,8 @@ const config: NextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ["@node-rs/argon2", "sharp"],
   output: "standalone",
+  // next/image kullanılmıyor; /_next/image optimize edicisi kapalı
+  images: { unoptimized: true },
   experimental: {
     serverActions: { bodySizeLimit: "12mb" },
   },

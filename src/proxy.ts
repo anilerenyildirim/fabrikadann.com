@@ -19,8 +19,8 @@ export function proxy(request: NextRequest) {
     `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
-    // iyzico Checkout Form eklenince ödeme alan adı buraya eklenecek
-    "form-action 'self'",
+    // Ödeme formu iyzico'nun ortak ödeme sayfasına yönlendirir
+    `form-action 'self'${process.env.PAYMENT_PROVIDER === "iyzico" ? " https://*.iyzipay.com https://*.iyzico.com" : ""}`,
     "frame-ancestors 'none'",
     "manifest-src 'self'",
     ...(isDev ? [] : ["upgrade-insecure-requests"]),

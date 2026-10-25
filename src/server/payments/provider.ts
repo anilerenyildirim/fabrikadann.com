@@ -17,6 +17,6 @@ export type PaymentStartInput = {
 
 export interface PaymentProvider {
   readonly name: string;
-  /** Müşterinin ödeme yapacağı adres. */
-  start(input: PaymentStartInput): Promise<{ redirectUrl: string }>;
+  /** Müşterinin ödeme yapacağı adres ve (varsa) sağlayıcının ödeme oturumu kimliği. */
+  start(input: PaymentStartInput): Promise<{ redirectUrl: string; providerSessionId?: string }>;
 }

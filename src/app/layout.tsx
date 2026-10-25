@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import "@fontsource-variable/archivo/wdth.css";
 import "./globals.css";
 
@@ -21,7 +22,9 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Her sayfa istekte render edilir: CSP nonce'u ancak böyle script etiketlerine eklenebilir
+  await connection();
   return (
     <html lang="tr">
       <body>{children}</body>

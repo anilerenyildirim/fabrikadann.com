@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, isNotNull, lt } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { randomToken } from "@/server/auth/crypto";
 import { getPaymentProvider } from "@/server/payments";
@@ -19,8 +19,11 @@ export async function startPayment(orderId: string, ctx: { appUrl: string; ip: s
   }
   const provider = getPaymentProvider();
   const token = randomToken();
-  await db.insert(payments).values({ orderId, provider: provider.name, token, amount: order.total });
-  return provider.start({
+  const [payment] = await db
+    .insert(payments)
+    .values({ orderId, provider: provider.name, token, amount: order.total })
+    .returning({ id: payments.id });
+  const started = await provider.start({
     token,
     callbackUrl: `${ctx.appUrl}/api/odeme/${provider.name}`,
     order: {
@@ -33,6 +36,11 @@ export async function startPayment(orderId: string, ctx: { appUrl: string; ip: s
       items: order.items.map((i) => ({ name: i.productName, sku: i.sku, unitPrice: i.unitPrice, quantity: i.quantity })),
     },
   });
+  // Tarayıcı dönüşü hiç gelmezse mutabakat bu kimlikle sağlayıcıya sorar
+  if (started.providerSessionId) {
+    await db.update(payments).set({ providerSession: started.providerSessionId }).where(eq(payments.id, payment!.id));
+  }
+  return { redirectUrl: started.redirectUrl };
 }
 
 export type PaymentOutcome = {
@@ -77,6 +85,8 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
         { action: "payment.amount_mismatch", target: order.number, data: { expected: order.total, got: outcome.amount } },
         tx,
       );
+      // Sağlayıcı başarılı dediyse para çekilmiş olabilir: iade listesinde görünsün
+      await audit({ action: "payment.needs_refund", target: order.number, data: { paymentId: payment.id, reason: "amount_mismatch" } }, tx);
       return { status: "amount_mismatch" as const, ...base };
     }
 
@@ -153,3 +163,36 @@ export async function getPendingPayment(token: string) {
   return row ?? null;
 }
 
+
+/**
+ * Mutabakat: sonucu tarayıcı dönüşüyle gelmemiş (müşteri sekmeyi kapatmış, bağlantı kopmuş) ödemeleri
+ * sağlayıcıya sorar. Bakım betiğinden, süresi dolan siparişler iptal edilmeden önce çağrılır.
+ */
+export async function reconcilePendingPayments(
+  lookup: (providerSession: string) => Promise<PaymentOutcome | null>,
+  provider: string,
+): Promise<number> {
+  const pending = await db
+    .select({ providerSession: payments.providerSession })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.provider, provider),
+        eq(payments.status, "pending"),
+        isNotNull(payments.providerSession),
+        lt(payments.createdAt, new Date(Date.now() - 2 * 60 * 1000)),
+        gt(payments.createdAt, new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)),
+      ),
+    )
+    .limit(200);
+  let settled = 0;
+  for (const { providerSession } of pending) {
+    try {
+      const outcome = await lookup(providerSession!);
+      if (outcome && (await completePayment(outcome)).status !== "not_found") settled++;
+    } catch (e) {
+      console.error("Mutabakat sorgusu başarısız", e);
+    }
+  }
+  return settled;
+}
