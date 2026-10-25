@@ -71,8 +71,8 @@ Sipariş verisi en kritik varlıktır. Her gece veritabanı ve görseller yedekl
 dosyaya yazar; yedek boşsa ya da komut başarısızsa günlüğe "BAŞARISIZ" yazar (sessizce boş yedek oluşmaz):
 
 ```cron
-30 3 * * * C="docker compose -f /srv/fabrikadann/deploy/docker-compose.prod.yml --env-file /srv/fabrikadann/.env.production"; F=/yedek/db-$(date +%F).dump; $C exec -T db pg_dump -U fabrikadann -Fc fabrikadann > $F.tmp 2>>/var/log/fabrikadann-yedek.log && test -s $F.tmp && mv $F.tmp $F || echo "$(date) DB YEDEGI BASARISIZ" >> /var/log/fabrikadann-yedek.log
-45 3 * * * F=/yedek/gorseller-$(date +%F).tgz; docker run --rm -v deploy_uploads:/u:ro -v /yedek:/b alpine tar czf /b/$(basename $F).tmp -C /u . 2>>/var/log/fabrikadann-yedek.log && mv $F.tmp $F || echo "$(date) GORSEL YEDEGI BASARISIZ" >> /var/log/fabrikadann-yedek.log
+30 3 * * * C="docker compose -f /srv/fabrikadann/deploy/docker-compose.prod.yml --env-file /srv/fabrikadann/.env.production"; F=/yedek/db-$(date +\%F).dump; $C exec -T db pg_dump -U fabrikadann -Fc fabrikadann > $F.tmp 2>>/var/log/fabrikadann-yedek.log && test -s $F.tmp && mv $F.tmp $F || echo "$(date) DB YEDEGI BASARISIZ" >> /var/log/fabrikadann-yedek.log
+45 3 * * * F=/yedek/gorseller-$(date +\%F).tgz; docker run --rm -v deploy_uploads:/u:ro -v /yedek:/b alpine tar czf /b/$(basename $F).tmp -C /u . 2>>/var/log/fabrikadann-yedek.log && mv $F.tmp $F || echo "$(date) GORSEL YEDEGI BASARISIZ" >> /var/log/fabrikadann-yedek.log
 ```
 
 (`deploy_uploads` adı compose proje adından gelir; `docker volume ls` ile doğrulayın.)
