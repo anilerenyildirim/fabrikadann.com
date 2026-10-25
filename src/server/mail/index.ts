@@ -2,7 +2,7 @@ import nodemailer from "nodemailer";
 
 export type Mail = { to: string; subject: string; text: string };
 
-let transport: nodemailer.Transporter | undefined;
+let transport: ReturnType<typeof nodemailer.createTransport> | undefined;
 
 /** SMTP_URL tanımlı değilse e-posta konsola yazılır (geliştirme). */
 export async function sendMail(mail: Mail): Promise<void> {

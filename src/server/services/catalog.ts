@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db, schema } from "@/server/db";
 
 const { products, productColors, productImages, variants, categories } = schema;
@@ -42,7 +43,7 @@ export function foldForSearch(s: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
-const foldSql = (col: SQL | typeof products.name) =>
+const foldSql = (col: SQL | AnyPgColumn) =>
   sql`lower(translate(${col}, 'İIıŞşĞğÜüÖöÇç', 'iiissgguuoocc'))`;
 
 /** LIKE içindeki özel karakterleri kaçırır. */
