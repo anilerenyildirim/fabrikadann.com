@@ -48,6 +48,8 @@ export const users = pgTable(
     phone: text("phone"),
     role: userRole("role").notNull().default("customer"),
     totpSecret: text("totp_secret"),
+    // Aynı TOTP kodunun ikinci kez kullanılmasını engeller
+    totpLastStep: integer("totp_last_step"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
