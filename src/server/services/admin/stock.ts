@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, like, lte, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { compareSizes, foldForSearch } from "../catalog";
+import { reservedByVariant } from "../stock";
 import { LOW_STOCK } from "./dashboard";
 
 const { variants, productColors, products, stockMovements, users } = schema;
@@ -18,6 +19,8 @@ export type StockRow = {
   sku: string;
   barcode: string | null;
   stock: number;
+  /** Kargolanmamış siparişlerde ayrılmış adet (stoktan zaten düşülmüş) */
+  reserved: number;
 };
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -58,8 +61,9 @@ export async function listStockRows(input: { filter?: StockFilter; q?: string } 
     .where(where.length ? and(...where) : undefined)
     .orderBy(asc(products.name), asc(products.id), asc(productColors.position))
     .limit(2000);
+  const reserved = await reservedByVariant(db);
   // Aynı ürün ve renk içinde numaraları sayısal sırala
-  return rows.sort(
+  return rows.map((r) => ({ ...r, reserved: reserved.get(r.variantId) ?? 0 })).sort(
     (a, b) =>
       a.productName.localeCompare(b.productName, "tr") ||
       a.productId.localeCompare(b.productId) ||

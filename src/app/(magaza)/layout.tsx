@@ -1,3 +1,4 @@
+import { CookieNotice } from "@/components/CookieNotice";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { getCurrentUser } from "@/server/auth/current";
@@ -30,6 +31,7 @@ export default async function StoreLayout({ children }: { children: React.ReactN
       />
       <main id="icerik">{children}</main>
       <SiteFooter settings={settings} />
+      <CookieNotice />
     </>
   );
 }

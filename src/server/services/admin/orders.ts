@@ -131,6 +131,8 @@ export const transitionInputSchema = z
       .regex(/^[A-Za-z0-9-]*$/, "Takip numarası yalnızca harf, rakam ve tire içerebilir.")
       .optional(),
     restock: z.boolean().optional(),
+    /** Ekranda görülen durum; sipariş bu arada değiştiyse geçiş reddedilir */
+    expectedFrom: orderStatusSchema.optional(),
   })
   .superRefine((v, ctx) => {
     if (v.to !== "shipped") return;
@@ -174,6 +176,7 @@ export async function changeOrderStatus(orderId: string, raw: TransitionInput, c
       carrier,
       trackingNumber: input.to === "shipped" ? input.trackingNumber : undefined,
       restock,
+      expectedFrom: input.expectedFrom,
     });
   } catch (e) {
     if (e instanceof OrderError) throw new AdminError(e.message);

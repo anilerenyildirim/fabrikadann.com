@@ -5,7 +5,7 @@ import { slugify } from "@/lib/slug";
 import { deleteProductImage, ImageError, storeProductImage } from "@/server/storage/images";
 import { audit } from "../audit";
 import { compareSizes, foldForSearch, type ImageRef } from "../catalog";
-import { setStock } from "../stock";
+import { reservedByVariant, setPhysicalCount, setStock, StaleStockError } from "../stock";
 import { AdminError, assertAdmin, isUniqueViolation, reorder, type AdminContext } from "./context";
 
 const { products, productColors, productImages, variants, categories, orderItems } = schema;
@@ -226,9 +226,16 @@ export async function getAdminProduct(id: string) {
     },
   });
   if (!product) return null;
+  const ids = product.colors.flatMap((c) => c.variants.map((v) => v.id));
+  const reserved = ids.length ? await reservedByVariant(db, ids) : new Map<string, number>();
   return {
     ...product,
-    colors: product.colors.map((c) => ({ ...c, variants: [...c.variants].sort((a, b) => compareSizes(a.size, b.size)) })),
+    colors: product.colors.map((c) => ({
+      ...c,
+      variants: [...c.variants]
+        .sort((a, b) => compareSizes(a.size, b.size))
+        .map((v) => ({ ...v, reserved: reserved.get(v.id) ?? 0 })),
+    })),
   };
 }
 
@@ -313,7 +320,17 @@ export async function createProduct(raw: ProductInput, ctx: AdminContext): Promi
   throw new AdminError("Ürün adresi üretilemedi; adres alanına farklı bir değer yazın.", "slug");
 }
 
-export async function updateProduct(id: string, raw: ProductInput, ctx: AdminContext): Promise<{ slug: string }> {
+/**
+ * opts.statusShown: formu açarken ekranda görülen durum. Gönderilen durum bununla aynıysa kullanıcı
+ * durumu değiştirmemiştir; bu arada durum başka yerden (ör. başka sekmede "Arşivle") değiştiyse o
+ * değişiklik geri alınmaz.
+ */
+export async function updateProduct(
+  id: string,
+  raw: ProductInput,
+  ctx: AdminContext,
+  opts: { statusShown?: ProductStatus } = {},
+): Promise<{ slug: string }> {
   await assertAdmin(ctx);
   const productId = parseId(id, "Ürün");
   const input = parseOrThrow(productInputSchema, raw);
@@ -323,6 +340,7 @@ export async function updateProduct(id: string, raw: ProductInput, ctx: AdminCon
     return await db.transaction(async (tx) => {
       const [current] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
       if (!current) throw new AdminError("Ürün bulunamadı.");
+      if (opts.statusShown && input.status === opts.statusShown) input.status = current.status;
       await assertCategory(input.categoryId, tx);
 
       let slug: string;
@@ -509,8 +527,15 @@ export async function moveColor(colorId: string, direction: "up" | "down", ctx: 
     await tx.select({ id: products.id }).from(products).where(eq(products.id, color.productId)).for("update");
     const next = reorder(await productColorsOf(color.productId, tx), cid, dir);
     if (!next) return;
+    let moved = false;
     for (const [i, c] of next.entries()) {
-      if (c.position !== i) await tx.update(productColors).set({ position: i }).where(eq(productColors.id, c.id));
+      if (c.position !== i) {
+        moved = true;
+        await tx.update(productColors).set({ position: i }).where(eq(productColors.id, c.id));
+      }
+    }
+    if (moved) {
+      await audit({ action: "color.move", actorId: ctx.actorId, target: color.productId, data: { colorId: cid, direction: dir }, ip: ctx.ip }, tx);
     }
   });
 }
@@ -671,8 +696,15 @@ export async function moveImage(imageId: string, direction: "up" | "down", ctx: 
     await tx.select({ id: productColors.id }).from(productColors).where(eq(productColors.id, img.colorId)).for("update");
     const next = reorder(await imagesOf(img.colorId, tx), iid, dir);
     if (!next) return;
+    let moved = false;
     for (const [i, row] of next.entries()) {
-      if (row.position !== i) await tx.update(productImages).set({ position: i }).where(eq(productImages.id, row.id));
+      if (row.position !== i) {
+        moved = true;
+        await tx.update(productImages).set({ position: i }).where(eq(productImages.id, row.id));
+      }
+    }
+    if (moved) {
+      await audit({ action: "image.move", actorId: ctx.actorId, target: img.productId, data: { imageId: iid, direction: dir }, ip: ctx.ip }, tx);
     }
   });
 }
@@ -724,6 +756,14 @@ export function parseSizeInput(input: string): string[] {
   const text = (input ?? "").replace(/[–—]/g, "-").trim();
   if (!text) throw new AdminError("Numara yazın. Örnek: 36-41 ya da 38, 38.5, 39", "sizes");
   if (text.length > 300) throw new AdminError("Numara girişi çok uzun.", "sizes");
+  // "38,5" Türkçede yarım numara gibi okunur ama virgül ayırıcı; "38" ve "5" diye anlaşılmasın
+  const commaHalf = /(?:^|[^\d.])(\d{2}),5(?![\d.])/.exec(text);
+  if (commaHalf) {
+    throw new AdminError(
+      `Yarım numarayı noktayla yazın: ${commaHalf[1]}.5 (virgül numaraları ayırır, ör. 38, 38.5).`,
+      "sizes",
+    );
+  }
   const out = new Set<number>();
   for (const raw of text.split(/[,;\s]+/).filter(Boolean)) {
     const range = /^(\d{1,2}(?:\.\d)?)-(\d{1,2}(?:\.\d)?)$/.exec(raw);
@@ -869,32 +909,70 @@ export async function updateVariant(
   });
 }
 
-/** Elle stok düzeltmesi: yeni değer yazılır, fark stok hareketi olarak (sebep + not) kaydedilir. */
+export type StockAdjustMode = "available" | "physical";
+
+export type StockAdjustResult = { from: number; to: number; reserved: number; shortfall: number };
+
+/**
+ * Elle stok düzeltmesi; fark stok hareketi olarak (sebep + not + kişi) kaydedilir.
+ * - "available": satılabilir stoğu doğrudan yazar. expected (ekranda görülen değer) verilirse ve stok
+ *   bu arada değiştiyse (ör. sipariş geldi) yazmaz.
+ * - "physical": depodaki sayımı girer; satılabilir = sayım − kargolanmamış siparişlerde ayrılmış adet.
+ */
 export async function adjustVariantStock(
   variantId: string,
-  newStock: number,
+  value: number,
   note: string,
   ctx: AdminContext,
-): Promise<{ from: number; to: number }> {
+  opts: { expected?: number; mode?: StockAdjustMode } = {},
+): Promise<StockAdjustResult> {
   await assertAdmin(ctx);
   const vid = parseId(variantId, "Numara");
-  const to = parseOrThrow(stockSchema, newStock, "stock");
+  const target = parseOrThrow(stockSchema, value, "stock");
   const why = parseOrThrow(noteSchema, note ?? "", "note");
-  return db.transaction(async (tx) => {
-    const [locked] = await tx
-      .select({ stock: variants.stock, sku: variants.sku })
-      .from(variants)
-      .where(eq(variants.id, vid))
-      .for("update");
-    if (!locked) throw new AdminError("Numara bulunamadı. Sayfayı yenileyin.");
-    if (locked.stock === to) return { from: to, to };
-    await setStock(tx, vid, to, { reason: "manual", note: why, actorId: ctx.actorId });
-    await audit(
-      { action: "stock.adjust", actorId: ctx.actorId, target: locked.sku, data: { variantId: vid, from: locked.stock, to, note: why }, ip: ctx.ip },
-      tx,
-    );
-    return { from: locked.stock, to };
-  });
+  const mode = opts.mode === "physical" ? "physical" : "available";
+  const expected =
+    opts.expected === undefined ? undefined : parseOrThrow(stockSchema, opts.expected, "expected");
+  try {
+    return await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select({ stock: variants.stock, sku: variants.sku })
+        .from(variants)
+        .where(eq(variants.id, vid))
+        .for("update");
+      if (!locked) throw new AdminError("Numara bulunamadı. Sayfayı yenileyin.");
+      const meta = { reason: "manual" as const, note: why, actorId: ctx.actorId };
+      let to = target;
+      let reserved = 0;
+      let shortfall = 0;
+      if (mode === "physical") {
+        ({ available: to, reserved, shortfall } = await setPhysicalCount(tx, vid, target, meta));
+      } else {
+        await setStock(tx, vid, target, { ...meta, expected });
+      }
+      if (locked.stock !== to) {
+        await audit(
+          {
+            action: "stock.adjust",
+            actorId: ctx.actorId,
+            target: locked.sku,
+            data: { variantId: vid, from: locked.stock, to, note: why, mode, ...(mode === "physical" ? { physical: target, reserved } : {}) },
+            ip: ctx.ip,
+          },
+          tx,
+        );
+      }
+      return { from: locked.stock, to, reserved, shortfall };
+    });
+  } catch (e) {
+    if (e instanceof StaleStockError) {
+      throw new AdminError(
+        `Stok bu arada değişti (şu an ${e.current}); muhtemelen sipariş geldi. Değeri kontrol edip yeniden kaydedin.`,
+        "stock",
+      );
+    }
+    throw e;
+  }
 }
 
 export async function deleteVariant(variantId: string, ctx: AdminContext): Promise<void> {
@@ -1041,8 +1119,15 @@ export async function moveCategory(id: string, direction: "up" | "down", ctx: Ad
     await tx.execute(sql`lock table ${categories} in share row exclusive mode`);
     const next = reorder(await allCategories(tx), cid, dir);
     if (!next) throw new AdminError("Kategori bulunamadı.");
+    let moved = false;
     for (const [i, c] of next.entries()) {
-      if (c.position !== i) await tx.update(categories).set({ position: i }).where(eq(categories.id, c.id));
+      if (c.position !== i) {
+        moved = true;
+        await tx.update(categories).set({ position: i }).where(eq(categories.id, c.id));
+      }
+    }
+    if (moved) {
+      await audit({ action: "category.move", actorId: ctx.actorId, target: cid, data: { direction: dir }, ip: ctx.ip }, tx);
     }
   });
 }

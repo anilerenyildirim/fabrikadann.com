@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/server/auth/current";
-import { getOrderForGuest, getOrderForUser } from "@/server/services/orders";
+import { getOrderForGuest, getOrderForUser, listOrdersForUser } from "@/server/services/orders";
 
 /*
   Misafir sipariş erişimi: sipariş oluşturulurken üretilen erişim token'ı yalnızca bu
@@ -90,4 +90,25 @@ export async function getAccessibleOrder(number: string) {
   }
   const token = await getGuestOrderToken(number);
   return token ? getOrderForGuest(number, token) : null;
+}
+
+/**
+ * Bu isteğin erişebildiği, ödemesi hâlâ beklenen siparişlerin numaraları (en yeni önce).
+ * "Ödemesi tamamlanmamış siparişleriniz var" hatasında müşteriye bağlantı vermek için.
+ */
+export async function listOpenAccessibleOrders(): Promise<string[]> {
+  const now = Date.now();
+  const isOpen = (o: { status: string; paymentExpiresAt: Date }) =>
+    o.status === "awaiting_payment" && o.paymentExpiresAt.getTime() > now;
+  const numbers: string[] = [];
+  const user = await getCurrentUser();
+  if (user) {
+    for (const o of await listOrdersForUser(user.id)) if (isOpen(o)) numbers.push(o.number);
+  }
+  for (const ref of await readGuestOrders()) {
+    if (numbers.includes(ref.number)) continue;
+    const o = await getOrderForGuest(ref.number, ref.token);
+    if (o && isOpen(o)) numbers.push(o.number);
+  }
+  return numbers.slice(0, MAX_GUEST_ORDERS);
 }

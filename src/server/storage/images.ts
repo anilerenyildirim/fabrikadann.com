@@ -19,7 +19,8 @@ const FILE_RE = /^p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export class ImageError extends Error {}
 
 function uploadRoot(): string {
-  return path.resolve(process.env.UPLOAD_DIR || "./uploads");
+  // turbopackIgnore: yükleme klasörü derleme izlemesine (standalone pakete) girmesin
+  return path.resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR || "./uploads");
 }
 
 function fileFor(id: string, width: number): string {

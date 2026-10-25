@@ -13,7 +13,8 @@ export type AdminStepResult = { ok: true; userId: string } | { ok: false; error:
 
 function tooMany(retryAfter: number): AdminStepResult {
   const minutes = Math.max(1, Math.ceil(retryAfter / 60));
-  return { ok: false, error: `Çok fazla deneme yapıldı. ${minutes} dakika sonra yeniden deneyin.` };
+  const wait = minutes > 90 ? `${Math.ceil(minutes / 60)} saat` : `${minutes} dakika`;
+  return { ok: false, error: `Çok fazla deneme yapıldı. ${wait} sonra yeniden deneyin.` };
 }
 
 /**
@@ -40,10 +41,16 @@ export async function adminPasswordStep(email: string, password: string, ip: str
   return { ok: true, userId: user.id };
 }
 
+/** TOTP için kullanıcı başına günlük üst sınır (parolası ele geçmiş hesapta kod denemesi yıllara yayılsın). */
+export const TOTP_DAILY_LIMIT = 30;
+
 /** İkinci adım: TOTP kodu. Aynı kod iki kez kabul edilmez (verifyTotpForUser). */
 export async function adminTotpStep(userId: string, code: string, ip: string): Promise<AdminStepResult> {
   const limited = await rateLimit(`totp:${userId}`, 5, 300);
   if (!limited.ok) return tooMany(limited.retryAfter);
+  // 5/5 dk tek başına günde ~1.440 deneme demek (6 haneli kodda günde ~%0,4 şans); günlük sınır bunu keser
+  const daily = await rateLimit(`totp:gun:${userId}`, TOTP_DAILY_LIMIT, 86_400);
+  if (!daily.ok) return tooMany(daily.retryAfter);
   const user = await db.query.users.findFirst({
     where: eq(schema.users.id, userId),
     columns: { id: true, role: true, totpSecret: true },

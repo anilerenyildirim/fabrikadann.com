@@ -40,12 +40,29 @@ export async function revenueByDay(days = 7): Promise<DayRevenue[]> {
   return result.rows.map((r) => ({ day: r.day, total: Number(r.total), count: Number(r.count) }));
 }
 
-export type RefundNeeded = { auditId: string; orderNumber: string | null; orderId: string | null; createdAt: Date };
+export type RefundNeeded = {
+  auditId: string;
+  orderNumber: string | null;
+  orderId: string | null;
+  createdAt: Date;
+  reason: string;
+};
+
+const REFUND_REASONS: Record<string, string> = {
+  cancelled: "Ödenmiş sipariş iptal edildi",
+  refunded: "Sipariş iade edildi",
+  amount_mismatch: "Ödeme tutarı siparişle uyuşmadı",
+};
+
+function refundReason(data: unknown): string {
+  const r = data && typeof data === "object" ? (data as { reason?: unknown }).reason : undefined;
+  return (typeof r === "string" && REFUND_REASONS[r]) || "Ödeme geldi ama sipariş karşılanamadı (stok bitti ya da çift ödeme)";
+}
 
 /** Parası alınmış ama karşılanamayan siparişler (payment.needs_refund) — henüz "iade edildi" işaretlenmemiş olanlar. */
 export async function listRefundsNeeded(): Promise<RefundNeeded[]> {
   const rows = await db
-    .select({ id: auditLog.id, target: auditLog.target, createdAt: auditLog.createdAt, orderId: orders.id })
+    .select({ id: auditLog.id, target: auditLog.target, data: auditLog.data, createdAt: auditLog.createdAt, orderId: orders.id })
     .from(auditLog)
     .leftJoin(orders, eq(orders.number, auditLog.target))
     .where(
@@ -59,7 +76,13 @@ export async function listRefundsNeeded(): Promise<RefundNeeded[]> {
     )
     .orderBy(desc(auditLog.createdAt))
     .limit(50);
-  return rows.map((r) => ({ auditId: r.id, orderNumber: r.target, orderId: r.orderId, createdAt: r.createdAt }));
+  return rows.map((r) => ({
+    auditId: r.id,
+    orderNumber: r.target,
+    orderId: r.orderId,
+    createdAt: r.createdAt,
+    reason: refundReason(r.data),
+  }));
 }
 
 /** Ödeme sağlayıcısı panelinden iade yapıldıktan sonra kaydı kapatır. */
