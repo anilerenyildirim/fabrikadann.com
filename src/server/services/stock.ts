@@ -80,6 +80,24 @@ export async function reservedByVariant(tx: DbOrTx, variantIds?: string[]): Prom
   return new Map(rows.filter((r) => r.variantId).map((r) => [r.variantId!, r.n]));
 }
 
+/** Ödemesi beklenen (süresi dolmamış) siparişlerde tutulan adetler. */
+export async function unpaidHeldByVariant(tx: DbOrTx, variantIds: string[]): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const rows = await tx
+    .select({ variantId: schema.orderItems.variantId, n: sql<number>`sum(${schema.orderItems.quantity})::int` })
+    .from(schema.orderItems)
+    .innerJoin(schema.orders, eq(schema.orders.id, schema.orderItems.orderId))
+    .where(
+      and(
+        eq(schema.orders.status, "awaiting_payment"),
+        sql`${schema.orders.paymentExpiresAt} > now()`,
+        inArray(schema.orderItems.variantId, variantIds),
+      ),
+    )
+    .groupBy(schema.orderItems.variantId);
+  return new Map(rows.filter((r) => r.variantId).map((r) => [r.variantId!, r.n]));
+}
+
 /**
  * Depodaki fiziksel sayımı girer: satılabilir stok = fiziksel − bekleyen siparişlerde ayrılmış adet.
  * Varyant satırı kilitlendikten sonra hesaplanır (eşzamanlı sipariş aynı kilidi bekler).

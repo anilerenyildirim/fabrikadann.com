@@ -1,21 +1,24 @@
 import { logError } from "@/server/log";
 import { randomInt } from "node:crypto";
-import { and, asc, desc, eq, gt, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { db, schema, type Tx } from "@/server/db";
 import type { AddressSnapshot } from "@/server/db/schema";
 import { randomToken, sha256 } from "@/server/auth/crypto";
 import { clearCart, computeShipping, loadCartLines, type CartOwner } from "./cart";
 import { getSettings } from "./settings";
-import { returnStock, takeStock } from "./stock";
+import { returnStock, takeStock, unpaidHeldByVariant } from "./stock";
 import { audit } from "./audit";
 
-const { orders, orderItems, carts } = schema;
+const { orders, orderItems, carts, variants } = schema;
 
 export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 export const MAX_ITEMS_PER_ORDER = 10;
 export const MAX_OPEN_ORDERS = 2;
 /** Mobil operatörlerde çok kişi aynı IP'yi paylaşır: IP için daha geniş sınır */
 export const MAX_OPEN_ORDERS_PER_IP = 5;
+/** Bir numaranın stoğunun ödemesi beklenen siparişlerde tutulabilecek en büyük payı (en az MIN_UNPAID_HOLD çift) */
+export const MAX_UNPAID_SHARE = 0.5;
+export const MIN_UNPAID_HOLD = 3;
 
 export type OrderStatus = (typeof schema.orderStatus.enumValues)[number];
 
@@ -40,7 +43,7 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 export class OrderError extends Error {
   constructor(
-    public code: "empty_cart" | "cart_problems" | "out_of_stock" | "too_many_items" | "too_many_open_orders" | "not_found" | "invalid_transition" | "missing_tracking",
+    public code: "empty_cart" | "cart_problems" | "out_of_stock" | "too_many_items" | "too_many_open_orders" | "reserved_by_others" | "not_found" | "invalid_transition" | "missing_tracking",
     message: string,
     public details: string[] = [],
   ) {
@@ -145,6 +148,28 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
 
     // Kilit sırası sabit olsun (eşzamanlı siparişlerde kilitlenme olmasın)
     const sorted = [...lines].sort((a, b) => a.variantId.localeCompare(b.variantId));
+    const variantIds = sorted.map((l) => l.variantId);
+    const locked = await tx
+      .select({ id: variants.id, stock: variants.stock })
+      .from(variants)
+      .where(inArray(variants.id, variantIds))
+      .orderBy(asc(variants.id))
+      .for("update");
+    // Ödenmemiş siparişler bir numaranın stoğunun en fazla yarısını tutabilir: IP değiştirerek açılan
+    // sahte siparişler bile vitrindeki stoğun tamamını kilitleyemez
+    const held = await unpaidHeldByVariant(tx, variantIds);
+    const crowded = sorted.filter((line) => {
+      const stock = locked.find((v) => v.id === line.variantId)?.stock ?? 0;
+      const h = held.get(line.variantId) ?? 0;
+      return h + line.quantity > Math.max(MIN_UNPAID_HOLD, Math.ceil((stock + h) * MAX_UNPAID_SHARE));
+    });
+    if (crowded.length > 0) {
+      throw new OrderError(
+        "reserved_by_others",
+        "Bu ürünler şu anda ödemesi tamamlanmamış başka siparişlerde ayrılmış. Birkaç dakika sonra tekrar deneyin.",
+        crowded.map((l) => `${l.productName} (${l.size})`),
+      );
+    }
     const short: string[] = [];
     for (const line of sorted) {
       const ok = await takeStock(tx, line.variantId, line.quantity, { reason: "order", reference: order.number });

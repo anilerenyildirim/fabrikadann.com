@@ -89,3 +89,18 @@ test("fiziksel sayım bekleyen siparişlerdeki adetleri düşer; eski ekrandan s
     StaleStockError,
   );
 });
+
+test("ödenmemiş siparişler bir numaranın stoğunun en fazla yarısını tutabilir", async () => {
+  const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 10 }] });
+  const v = variants[0]!.id;
+  const mk = (n: number, qty: number) =>
+    addToCart({ guestToken: `h${n}` }, v, qty).then(() =>
+      createOrder({ guestToken: `h${n}` }, { email: `h${n}@x.com`, userId: null, address, ip: `10.0.0.${n}` }),
+    );
+  await mk(1, 3);
+  await mk(2, 2);
+  // 5 çift ödenmemiş siparişte: 10 çiftin yarısı doldu
+  await expect(mk(3, 1)).rejects.toMatchObject({ code: "reserved_by_others" });
+  const [row] = await db.select().from(schema.variants).where(eq(schema.variants.id, v));
+  expect(row!.stock).toBe(5);
+});
