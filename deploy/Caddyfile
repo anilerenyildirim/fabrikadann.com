@@ -1,0 +1,13 @@
+fabrikadann.com, www.fabrikadann.com {
+	@www host www.fabrikadann.com
+	redir @www https://fabrikadann.com{uri} permanent
+
+	encode zstd gzip
+	request_body {
+		max_size 15MB
+	}
+	# Uygulama istemci IP'sini bu başlıktan okur (CLIENT_IP_HEADER=x-real-ip)
+	reverse_proxy app:3000 {
+		header_up X-Real-IP {remote_host}
+	}
+}
