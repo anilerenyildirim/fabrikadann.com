@@ -48,20 +48,23 @@ test("ürün sayfası: taşma yok, dokunma hedefleri yeterli", async ({ page }) 
 test("misafir olarak satın alma (test ödemesi)", async ({ page }) => {
   await page.goto("/urunler");
   await page.locator("main a[href^='/urun/']").first().click();
-  await page.getByRole("button", { name: /^\d+(\.5)?$/ }).and(page.locator(":enabled")).first().click();
-  await page.getByRole("button", { name: "Sepete ekle" }).first().click();
-  await expect(page.getByText("Sepete eklendi").first()).toBeVisible();
+  // Numaralar radyo düğmesi; tıklanan, onu saran etiket
+  await page.locator("label:has(input[name=variantId]:enabled)").first().click();
+  await page.getByRole("button", { name: "Sepete ekle" }).filter({ visible: true }).first().click();
+  await expect(page.getByText("Sepete eklendi").filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sepet, 1 ürün" })).toBeVisible();
 
   await page.goto("/sepet");
   await page.getByRole("link", { name: /Ödemeye geç/ }).or(page.getByRole("button", { name: /Ödemeye geç/ })).first().click();
   await expect(page).toHaveURL(/\/odeme/);
 
-  await page.getByLabel("E-posta").fill("e2e@ornek.com");
-  await page.getByLabel("Ad soyad").fill("Deneme Müşteri");
-  await page.getByLabel("Telefon").fill("05551112233");
-  await page.getByLabel("İl").selectOption("İstanbul");
-  await page.getByLabel("İlçe").fill("Kadıköy");
-  await page.getByLabel("Adres").fill("Moda Caddesi No 1 Daire 2");
+  // Her çalıştırmada farklı e-posta: kişi başına açık sipariş sınırına takılmasın
+  await page.getByLabel("E-posta", { exact: true }).fill(`e2e-${Date.now()}@ornek.com`);
+  await page.getByLabel("Ad soyad", { exact: true }).fill("Deneme Müşteri");
+  await page.getByLabel("Telefon", { exact: true }).fill("05551112233");
+  await page.getByLabel("İl", { exact: true }).selectOption("İstanbul");
+  await page.getByLabel("İlçe", { exact: true }).fill("Kadıköy");
+  await page.getByLabel("Adres", { exact: true }).fill("Moda Caddesi No 1 Daire 2");
   await page.getByRole("checkbox").last().check();
   await page.getByRole("button", { name: /Siparişi onayla/ }).click();
 

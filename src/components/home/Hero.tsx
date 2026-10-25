@@ -31,13 +31,14 @@ export function Hero({ image, secondImage, caption }: { image: ImageRef | null; 
         </div>
       )}
 
-      <div className="relative flex h-full flex-col items-center justify-center px-6 pt-14 md:pt-16">
+      {/* Fark karışımı: beyaz öğeler açık zeminde siyah, koyu zeminde beyaz görünür — her fotoğrafta okunur */}
+      <div className="relative flex h-full flex-col items-center justify-center px-6 pt-14 text-paper mix-blend-difference md:pt-16">
         <h1 className="w-[min(70vw,30rem)]">
-          <Monogram animate className="h-auto w-full text-ink" />
+          <Monogram animate className="h-auto w-full" />
         </h1>
       </div>
 
-      <div className="belir absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] text-center">
+      <div className="belir absolute inset-x-0 bottom-0 flex flex-col items-center gap-1 px-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] text-center text-paper mix-blend-difference">
         {caption && <p className="label">{caption}</p>}
         <Link
           href="/urunler"

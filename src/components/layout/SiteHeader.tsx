@@ -33,7 +33,9 @@ export function SiteHeader({ categories, cartCount, signedIn, announcement }: Pr
   return (
     <>
       {announcement ? (
-        <div className="label relative z-40 bg-ink px-4 py-2 text-center text-paper">{announcement}</div>
+        <div className="relative z-40 bg-ink px-4 py-2 text-center text-[0.625rem] leading-[0.875rem] font-[450] tracking-[0.04em] text-balance text-paper uppercase sm:text-[0.75rem] sm:tracking-[0.06em]">
+          {announcement}
+        </div>
       ) : null}
       <header
         className={`sticky top-0 z-40 transition-colors duration-200 ${

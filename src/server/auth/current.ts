@@ -66,14 +66,26 @@ export async function requireAdmin() {
  * CLIENT_IP_HEADER ile vekilin yazdığı başlık seçilir; varsayılan X-Forwarded-For'un
  * en sağdaki değeri (bizim vekilimizin eklediği, istemcinin uyduramayacağı değer).
  */
-export async function getClientIp(): Promise<string> {
+async function rawClientIp(): Promise<string | null> {
   const h = await headers();
   const name = process.env.CLIENT_IP_HEADER?.toLowerCase() || "x-forwarded-for";
   const raw = h.get(name);
-  if (!raw) return "bilinmiyor";
+  if (!raw) return null;
   const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
-  const ip = (name === "x-forwarded-for" ? parts.at(-1) : parts[0]) ?? "";
-  return normalizeIp(ip);
+  return (name === "x-forwarded-for" ? parts.at(-1) : parts[0]) ?? null;
+}
+
+/** Hız sınırı anahtarları için IP (IPv6 /64 bloğuna indirgenmiş). */
+export async function getClientIp(): Promise<string> {
+  const ip = await rawClientIp();
+  return ip ? normalizeIp(ip) : "bilinmiyor";
+}
+
+/** Kayıt için tam IP (sözleşme onayı, açık sipariş sayımı): doğrulanmış, indirgenmemiş. */
+export async function getClientIpForRecord(): Promise<string> {
+  const ip = (await rawClientIp())?.toLowerCase() ?? "";
+  if (ip.startsWith("::ffff:") && isIP(ip.slice(7)) === 4) return ip.slice(7);
+  return isIP(ip) ? ip : "bilinmiyor";
 }
 
 /**

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { fieldErrorsOf, formToObject, type FormState } from "@/lib/form";
 import type { AddressSnapshot } from "@/server/db/schema";
-import { getClientIp, getCurrentUser } from "@/server/auth/current";
+import { getClientIp, getClientIpForRecord, getCurrentUser } from "@/server/auth/current";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { getCartOwner } from "@/server/cart-owner";
 import { listOpenAccessibleOrders, rememberGuestOrder } from "@/server/guest-orders";
@@ -102,7 +102,7 @@ export async function placeOrder(_prev: CheckoutState, form: FormData): Promise<
 
   let order: CreatedOrder;
   try {
-    order = await createOrder(owner, { email, userId: user?.id ?? null, address, ip });
+    order = await createOrder(owner, { email, userId: user?.id ?? null, address, ip: await getClientIpForRecord() });
   } catch (e) {
     if (e instanceof OrderError) {
       if (e.code === "too_many_open_orders") {
