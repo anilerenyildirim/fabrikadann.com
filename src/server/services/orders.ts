@@ -277,6 +277,8 @@ export async function transitionOrder(
 const orderWith = { items: { orderBy: [asc(orderItems.id)] } };
 
 export async function listOrdersForUser(userId: string) {
+  // Süresi dolmuş "ödeme bekleniyor" siparişler bakım betiğini beklemeden iptal görünsün
+  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
   return db.query.orders.findMany({
     where: eq(orders.userId, userId),
     orderBy: [desc(orders.createdAt)],
@@ -287,6 +289,7 @@ export async function listOrdersForUser(userId: string) {
 
 /** Sipariş yalnızca sahibine döner; başkasınınki için null (IDOR yok). */
 export async function getOrderForUser(userId: string, number: string) {
+  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
   return (
     (await db.query.orders.findFirst({
       where: and(eq(orders.number, number), eq(orders.userId, userId)),
@@ -297,6 +300,7 @@ export async function getOrderForUser(userId: string, number: string) {
 
 export async function getOrderForGuest(number: string, accessToken: string) {
   if (!accessToken || accessToken.length > 100) return null;
+  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
   return (
     (await db.query.orders.findFirst({
       where: and(eq(orders.number, number), eq(orders.guestAccessHash, sha256(accessToken))),
