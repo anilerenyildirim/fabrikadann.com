@@ -13,7 +13,11 @@ olarak çalışır; önünde Caddy (otomatik HTTPS) ve yanında PostgreSQL bulun
 
 ## 2. İmajı derleme
 
-İmajı sunucuda değil, kendi bilgisayarınızda ya da CI'da derleyin (`next build` çok bellek ister):
+İmajı sunucuda değil, kendi bilgisayarınızda ya da CI'da derleyin (`next build` çok bellek ister).
+Derlemeyi yalnızca Docker içinde yapın: `.env` bulunan bir klasörde `next build` çalıştırıp
+`.next/standalone`'u elle sunucuya kopyalamayın (Next `.env`'i pakete dahil eder). Temel imaj sürümleri
+(`Dockerfile`'daki Node, compose'daki Postgres ve Caddy) sabittir; güvenlik güncellemelerini takip edip
+etiketleri bilinçli olarak yükseltin.
 
 ```bash
 docker build -t fabrikadann:latest .
@@ -77,7 +81,13 @@ dosyaya yazar; yedek boşsa ya da komut başarısızsa günlüğe "BAŞARISIZ" y
 
 (`deploy_uploads` adı compose proje adından gelir; `docker volume ls` ile doğrulayın.)
 
-Yedekleri sunucu dışına (ör. başka bir bulut depolama) kopyalayın ve geri yüklemeyi en az bir kez deneyin.
+Yedekler müşterilerin kişisel verisini içerir:
+
+- Yedek klasörü yalnızca root'a açık olsun: `sudo install -d -m 700 /yedek` ve cron satırlarının başına `umask 077;` ekleyin.
+- 14 günden eski yedekleri silin: `0 5 * * * find /yedek -type f -mtime +14 -delete`
+- Sunucu dışına **şifreli** kopyalayın, ör. [age](https://age-encryption.org) ile: `age -r <açık-anahtar> -o db.dump.age db.dump`
+  (özel anahtar sunucuda durmasın). Geri yüklemeyi en az bir kez deneyin.
+- Bakım ve yedek günlükleri için logrotate tanımlayın (ör. haftalık, 4 kopya).
 
 ## 7. Güncelleme
 
@@ -94,7 +104,7 @@ docker compose ... up -d app
 - [ ] Yasal metinlerin (mesafeli satış, ön bilgilendirme, KVKK, çerez, iade) avukat kontrolü; iade kargo koşulunun belirlenmesi.
 - [ ] Ayarlar'dan şirket bilgileri.
 - [ ] Gerçek ürün fotoğrafları (4:5 dikey oran, en az 1600 px genişlik önerilir).
-- [ ] SMTP (sipariş ve parola e-postaları için) — SPF/DKIM kayıtları.
+- [ ] SMTP — **zorunlu**: üyelik e-posta doğrulamasıyla açılıyor; SMTP yoksa yeni müşteriler hesaplarını etkinleştiremez (misafir alışveriş çalışır). Sipariş, kargo ve parola e-postaları da buradan gider. SPF/DKIM/DMARC kayıtlarını ekleyin.
 - [ ] Alan adı DNS'i sunucuya: yalnızca A kaydı (Docker IPv6 kurulmadan AAAA yayımlamayın). Cloudflare kullanılacaksa proxy açık + `deploy/Caddyfile`'daki `trusted_proxies` bloğu açık; `CLIENT_IP_HEADER=x-real-ip` kalır.
 - [ ] Yedeklemenin çalıştığının doğrulanması.
 - [ ] e-Fatura/e-Arşiv entegrasyonu (muhasebe sürecinize göre).
