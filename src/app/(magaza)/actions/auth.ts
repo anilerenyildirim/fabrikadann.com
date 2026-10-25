@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { env } from "@/env";
@@ -33,7 +34,7 @@ export async function loginAction(_prev: FormState, form: FormData): Promise<For
     if (!result.ok) return { error: result.error, values };
     await startSession(result.user);
   } catch (e) {
-    console.error("[giris]", e);
+    logError("[giris]", e);
     return { error: GENERIC_ERROR, values };
   }
   redirect(returnPath(parsed.data.sonra));
@@ -58,7 +59,7 @@ export async function registerAction(_prev: FormState, form: FormData): Promise<
     }
     await startSession({ id: created.value.id, role: "customer" });
   } catch (e) {
-    console.error("[kayit]", e);
+    logError("[kayit]", e);
     return { error: GENERIC_ERROR, values };
   }
   redirect(returnPath(parsed.data.sonra));
@@ -86,12 +87,12 @@ export async function forgotPasswordAction(_prev: FormState, form: FormData): Pr
         try {
           await requestPasswordReset(email, env.APP_URL);
         } catch (e) {
-          console.error("[sifre-sifirlama]", e);
+          logError("[sifre-sifirlama]", e);
         }
       });
     }
   } catch (e) {
-    console.error("[sifre-sifirlama]", e);
+    logError("[sifre-sifirlama]", e);
     return { error: GENERIC_ERROR, values };
   }
   // E-posta alanı dolu kalsın: "Bağlantıyı yeniden gönder" yeniden yazmadan çalışsın
@@ -115,7 +116,7 @@ export async function resetPasswordAction(_prev: FormState, form: FormData): Pro
       return result.field === "password" ? { fieldErrors: { password: result.error } } : { error: result.error };
     }
   } catch (e) {
-    console.error("[sifre-yenile]", e);
+    logError("[sifre-yenile]", e);
     return { error: GENERIC_ERROR };
   }
   redirect("/giris?sifirlandi=1");

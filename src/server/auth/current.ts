@@ -68,7 +68,10 @@ export async function requireAdmin() {
  */
 async function rawClientIp(): Promise<string | null> {
   const h = await headers();
-  const name = process.env.CLIENT_IP_HEADER?.toLowerCase() || "x-forwarded-for";
+  // Canlıda varsayılan, ters vekilin (Caddy) yazdığı X-Real-IP; X-Forwarded-For istemci tarafından uydurulabilir
+  const name =
+    process.env.CLIENT_IP_HEADER?.toLowerCase() ||
+    (process.env.NODE_ENV === "production" ? "x-real-ip" : "x-forwarded-for");
   const raw = h.get(name);
   if (!raw) return null;
   const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);

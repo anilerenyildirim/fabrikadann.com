@@ -29,3 +29,10 @@ test("Türkçe büyük/küçük harf", () => {
   expect(trLower("AYAKKABI İNCE")).toBe("ayakkabı ince");
   expect(trUpper("ince ayakkabı")).toBe("İNCE AYAKKABI");
 });
+
+test("kontrol karakterleri temizlenir, satır sonu kalır", async () => {
+  const { stripControl } = await import("@/lib/text");
+  const { parseListingParams } = await import("@/lib/listing");
+  expect(stripControl(`a${String.fromCharCode(0)}b${String.fromCharCode(27)}c\nd`)).toBe("abc\nd");
+  expect(parseListingParams({ q: `bo${String.fromCharCode(0)}t` }).q).toBe("bot");
+});

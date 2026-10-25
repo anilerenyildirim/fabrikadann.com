@@ -197,6 +197,15 @@ export function CheckoutForm({ signedInEmail, addresses, canSaveAddress, prefill
               </>
             }
           />
+          <p className="mt-2 text-[0.8125rem] leading-relaxed text-graphite">
+            Ad, iletişim ve adres bilgileriniz siparişinizi teslim etmek ve ödemesini almak için işlenir; ödeme
+            kuruluşu ve kargo firmasıyla paylaşılır. Ayrıntılar:{" "}
+            <a href="/kvkk" target="_blank" rel="noopener" className="underline underline-offset-2">
+              KVKK aydınlatma metni
+              <span className="sr-only"> (yeni sekmede açılır)</span>
+            </a>
+            .
+          </p>
 
           {state.error && (
             <div ref={noticeRef} tabIndex={-1} className="mt-6 outline-none">

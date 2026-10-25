@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { redirect } from "next/navigation";
 import { fieldErrorsOf, safeValues, type FormState } from "@/lib/form";
 import { requireAccountUser } from "@/components/account/guard";
@@ -31,7 +32,7 @@ export async function updateProfileAction(_prev: FormState, form: FormData): Pro
   try {
     await updateProfile(user.id, parsed.data);
   } catch (e) {
-    console.error("[profil]", e);
+    logError("[profil]", e);
     return { error: GENERIC_ERROR, values };
   }
   const { firstName, lastName, phone } = parsed.data;
@@ -65,7 +66,7 @@ export async function changePasswordAction(_prev: FormState, form: FormData): Pr
     // Servis kullanıcının bütün oturumlarını sildi; bu cihazda oturum açık kalsın
     await startSession({ id: user.id, role: user.role }, { keepSecondFactor: hadSecondFactor });
   } catch (e) {
-    console.error("[parola-degistir]", e);
+    logError("[parola-degistir]", e);
     return { error: GENERIC_ERROR };
   }
   return { ok: true, message: "Parolanız değişti. Diğer cihazlardaki oturumlarınız kapatıldı." };
@@ -82,7 +83,7 @@ export async function createAddressAction(_prev: FormState, form: FormData): Pro
     const created = await createAddress(user.id, parsed.data);
     if (!created.ok) return { error: created.error, values };
   } catch (e) {
-    console.error("[adres-ekle]", e);
+    logError("[adres-ekle]", e);
     return { error: GENERIC_ERROR, values };
   }
   redirect("/hesabim/adresler?durum=eklendi");
@@ -102,7 +103,7 @@ export async function updateAddressAction(_prev: FormState, form: FormData): Pro
     const updated = await updateAddress(user.id, id.data, parsed.data);
     if (!updated) return { error: "Adres bulunamadı. Adres listesine dönüp yeniden deneyin.", values };
   } catch (e) {
-    console.error("[adres-guncelle]", e);
+    logError("[adres-guncelle]", e);
     return { error: GENERIC_ERROR, values };
   }
   redirect("/hesabim/adresler?durum=guncellendi");
@@ -116,7 +117,7 @@ export async function deleteAddressAction(form: FormData): Promise<void> {
     try {
       deleted = await deleteAddress(user.id, id.data);
     } catch (e) {
-      console.error("[adres-sil]", e);
+      logError("[adres-sil]", e);
     }
   }
   redirect(`/hesabim/adresler?durum=${deleted ? "silindi" : "silinemedi"}`);

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, exists, inArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db, schema } from "@/server/db";
+import { stripControl } from "@/lib/text";
 
 const { products, productColors, productImages, variants, categories } = schema;
 
@@ -80,7 +81,8 @@ export async function listProducts(input: ListProductsInput = {}): Promise<{ ite
     );
   }
 
-  const q = input.q?.trim().slice(0, 80);
+  // NUL vb. kontrol karakterleri Postgres'te hataya yol açar
+  const q = input.q ? stripControl(input.q).trim().slice(0, 80) : undefined;
   if (q) {
     const pattern = `%${escapeLike(foldForSearch(q))}%`;
     where.push(sql`(${foldSql(products.name)} LIKE ${pattern} OR ${foldSql(products.description)} LIKE ${pattern})`);

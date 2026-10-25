@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import { and, eq, gt, isNotNull, lt } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { randomToken } from "@/server/auth/crypto";
@@ -116,7 +117,7 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
   });
 
   if (result.status === "paid" && result.orderId) {
-    await sendOrderConfirmation(result.orderId).catch((e) => console.error("Sipariş e-postası gönderilemedi", e));
+    await sendOrderConfirmation(result.orderId).catch((e) => logError("Sipariş e-postası gönderilemedi", e));
   }
   return result;
 }
@@ -202,7 +203,7 @@ export async function reconcilePendingPayments(
       const outcome = await lookup(providerSession!);
       if (outcome && (await completePayment(outcome)).status !== "not_found") settled++;
     } catch (e) {
-      console.error("Mutabakat sorgusu başarısız", e);
+      logError("Mutabakat sorgusu başarısız", e);
     }
   }
   return settled;

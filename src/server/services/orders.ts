@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, gt, lt, or, sql } from "drizzle-orm";
 import { db, schema, type Tx } from "@/server/db";
@@ -71,7 +72,7 @@ export type CreatedOrder = { id: string; number: string; total: number; guestAcc
  */
 export async function createOrder(owner: CartOwner, input: CreateOrderInput): Promise<CreatedOrder> {
   // Temizlik hatası bu müşterinin siparişini engellemesin
-  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
+  await releaseExpiredOrders().catch((e) => logError("Süresi dolan siparişler iptal edilemedi", e));
   const settings = await getSettings();
 
   return db.transaction(async (tx) => {
@@ -278,7 +279,7 @@ const orderWith = { items: { orderBy: [asc(orderItems.id)] } };
 
 export async function listOrdersForUser(userId: string) {
   // Süresi dolmuş "ödeme bekleniyor" siparişler bakım betiğini beklemeden iptal görünsün
-  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
+  await releaseExpiredOrders().catch((e) => logError("Süresi dolan siparişler iptal edilemedi", e));
   return db.query.orders.findMany({
     where: eq(orders.userId, userId),
     orderBy: [desc(orders.createdAt)],
@@ -289,7 +290,7 @@ export async function listOrdersForUser(userId: string) {
 
 /** Sipariş yalnızca sahibine döner; başkasınınki için null (IDOR yok). */
 export async function getOrderForUser(userId: string, number: string) {
-  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
+  await releaseExpiredOrders().catch((e) => logError("Süresi dolan siparişler iptal edilemedi", e));
   return (
     (await db.query.orders.findFirst({
       where: and(eq(orders.number, number), eq(orders.userId, userId)),
@@ -300,7 +301,7 @@ export async function getOrderForUser(userId: string, number: string) {
 
 export async function getOrderForGuest(number: string, accessToken: string) {
   if (!accessToken || accessToken.length > 100) return null;
-  await releaseExpiredOrders().catch((e) => console.error("Süresi dolan siparişler iptal edilemedi", e));
+  await releaseExpiredOrders().catch((e) => logError("Süresi dolan siparişler iptal edilemedi", e));
   return (
     (await db.query.orders.findFirst({
       where: and(eq(orders.number, number), eq(orders.guestAccessHash, sha256(accessToken))),

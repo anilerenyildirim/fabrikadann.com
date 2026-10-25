@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import { and, asc, eq, exists, inArray, like, ne, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema, type DbOrTx, type Tx } from "@/server/db";
@@ -563,7 +564,7 @@ async function unreferencedKeys(keys: string[]): Promise<string[]> {
 
 async function removeFiles(keys: string[]) {
   for (const key of await unreferencedKeys(keys)) {
-    await deleteProductImage(key).catch((e) => console.error("Görsel dosyası silinemedi", key, e));
+    await deleteProductImage(key).catch((e) => logError(`Görsel dosyası silinemedi ${key}`, e));
   }
 }
 

@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/server/db";
@@ -202,7 +203,7 @@ export async function changeOrderStatus(orderId: string, raw: TransitionInput, c
     await sendShippedMail(orderId);
     return { mailSent: true };
   } catch (e) {
-    console.error("Kargo e-postası gönderilemedi", e);
+    logError("Kargo e-postası gönderilemedi", e);
     await audit({ action: "order.ship_mail_failed", actorId: ctx.actorId, target: before.number, ip: ctx.ip });
     return { mailSent: false };
   }

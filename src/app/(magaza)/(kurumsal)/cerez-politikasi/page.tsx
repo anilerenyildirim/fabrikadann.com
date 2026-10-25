@@ -46,7 +46,8 @@ export default function CookiePolicyPage() {
       <p>
         Aşağıdaki çerezlerin tümü birinci taraf (yalnızca fabrikadann.com tarafından okunan) ve zorunlu çerezlerdir.
         Yalnızca güvenli (HTTPS) bağlantıda gönderilir, sayfadaki betikler tarafından okunamaz (HttpOnly) ve başka
-        sitelerden gelen isteklere eklenmez (SameSite=Lax).
+        sitelerin arka planda yaptığı isteklere ya da gönderdiği formlara eklenmez; başka bir siteden bir bağlantıya
+        tıklayarak fabrikadann.com’a geldiğinizde ise oturumunuzun açık kalması için gönderilir (SameSite=Lax).
       </p>
       <div className="mb-4 border-t border-rule text-[0.875rem]">
         {COOKIES.map((c) => (

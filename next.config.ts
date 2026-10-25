@@ -16,6 +16,10 @@ const config: NextConfig = {
   reactStrictMode: true,
   serverExternalPackages: ["@node-rs/argon2", "sharp"],
   output: "standalone",
+  // Yüklenen görseller, testler ve belgeler canlı pakete (izlemeye) girmesin
+  outputFileTracingExcludes: {
+    "/*": ["./uploads/**/*", "./tests/**/*", "./e2e/**/*", "./docs/**/*", "./brand/**/*", "./test-results/**/*"],
+  },
   // next/image kullanılmıyor; /_next/image optimize edicisi kapalı
   images: { unoptimized: true },
   experimental: {

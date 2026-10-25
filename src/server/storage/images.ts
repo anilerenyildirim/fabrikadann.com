@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -19,7 +20,7 @@ const FILE_RE = /^p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export class ImageError extends Error {}
 
 function uploadRoot(): string {
-  // turbopackIgnore: yükleme klasörü derleme izlemesine (standalone pakete) girmesin
+  // Canlı paketin dışında tutulması next.config.ts'deki outputFileTracingExcludes ile sağlanır
   return path.resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR || "./uploads");
 }
 
@@ -69,7 +70,7 @@ export async function storeProductImage(input: Buffer): Promise<StoredImage> {
     }
   } catch (e) {
     await deleteProductImage(`p/${id}`);
-    console.error("Görsel işlenemedi", e);
+    logError("Görsel işlenemedi", e);
     throw new ImageError("Görsel işlenemedi. Dosya bozuk olabilir; başka bir dosya deneyin.");
   }
   return { key: `p/${id}`, width, height };

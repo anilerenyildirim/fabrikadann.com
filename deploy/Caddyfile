@@ -14,14 +14,25 @@ fabrikadann.com, www.fabrikadann.com {
 
 	encode zstd gzip
 
-	# Büyük gövde yalnızca yönetim panelindeki görsel yüklemelerinde
-	@yonetim path /yonetim /yonetim/*
-	request_body @yonetim {
+	# Büyük gövde yalnızca ürün düzenleme sayfasındaki görsel yüklemesinde
+	@yukleme path /yonetim/urunler/*
+	request_body @yukleme {
 		max_size 13MB
 	}
-	@diger not path /yonetim /yonetim/*
+	@diger not path /yonetim/urunler/*
 	request_body @diger {
 		max_size 256KB
+	}
+
+	# Uygulamaya ulaşmayan hata yanıtları (ör. bozuk adres) da güvenlik başlıklarıyla dönsün;
+	# '?' yalnızca uygulama başlığı koymadıysa ekler
+	header {
+		?X-Content-Type-Options nosniff
+		?X-Frame-Options DENY
+		?Referrer-Policy strict-origin-when-cross-origin
+		?Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		?Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		-Server
 	}
 
 	# Kullanılmayan görsel optimize edicisi dışarıya kapalı

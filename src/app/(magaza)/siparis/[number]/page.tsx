@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -38,7 +39,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
     const cleaned = await releaseExpiredOrders().then(
       () => true,
       (e) => {
-        console.error("Süresi dolan siparişler iptal edilemedi", e);
+        logError("Süresi dolan siparişler iptal edilemedi", e);
         return false;
       },
     );

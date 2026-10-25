@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import "server-only";
 import { readSessionToken, setSessionCookie } from "@/server/auth/current";
 import { createSession, deleteSession, markSecondFactor } from "@/server/auth/session";
@@ -29,7 +30,7 @@ export async function startSession(
       await clearGuestCartCookie();
     } catch (e) {
       // Sepet birleşmese de giriş tamamlansın; misafir sepeti çerezde kalır, sonraki girişte yeniden denenir
-      console.error("[giris] misafir sepeti birleştirilemedi", e);
+      logError("[giris] misafir sepeti birleştirilemedi", e);
     }
   }
 }

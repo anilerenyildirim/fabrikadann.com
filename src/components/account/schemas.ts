@@ -1,3 +1,4 @@
+import { stripControl } from "@/lib/text";
 import { z } from "zod";
 import { safeReturnPath } from "@/lib/form";
 import { PASSWORD_MAX } from "@/server/auth/password";
@@ -14,7 +15,7 @@ export function readFields<K extends string>(form: FormData, keys: readonly K[])
   const out = {} as Record<K, string>;
   for (const key of keys) {
     const v = form.get(key);
-    out[key] = typeof v === "string" ? v : "";
+    out[key] = typeof v === "string" ? stripControl(v) : "";
   }
   return out;
 }

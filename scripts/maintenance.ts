@@ -8,6 +8,7 @@ import { reconcilePendingPayments } from "@/server/services/payments";
 import { retrieveIyzicoOutcome } from "@/server/payments/iyzico";
 import { pruneSessions } from "@/server/auth/session";
 import { pruneRateLimits } from "@/server/auth/rate-limit";
+import { applyRetention } from "@/server/services/retention";
 
 let reconciled = 0;
 if (process.env.PAYMENT_PROVIDER === "iyzico") {
@@ -17,5 +18,10 @@ if (process.env.PAYMENT_PROVIDER === "iyzico") {
 const released = await releaseExpiredOrders();
 await pruneSessions();
 await pruneRateLimits();
-console.log(`[bakım] ${new Date().toISOString()} mutabakat: ${reconciled}, süresi dolan sipariş: ${released}`);
+// KVKK: saklama süresi dolan kişisel veriler (aydınlatma metnindeki sürelerle)
+const retention = await applyRetention();
+console.log(
+  `[bakım] ${new Date().toISOString()} mutabakat: ${reconciled}, süresi dolan sipariş: ${released}, ` +
+    `imha: ${JSON.stringify(retention)}`,
+);
 await pool.end();

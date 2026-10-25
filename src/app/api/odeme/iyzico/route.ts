@@ -1,3 +1,4 @@
+import { logError } from "@/server/log";
 import { retrieveIyzicoOutcome } from "@/server/payments/iyzico";
 import { completePayment, findOrderNumberByProviderSession } from "@/server/services/payments";
 
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     const query = result.status === "paid" ? "basarili" : result.status === "already_processed" ? "" : "basarisiz";
     return redirect(`/siparis/${number}${query ? `?odeme=${query}` : ""}`);
   } catch (e) {
-    console.error("iyzico dönüşü işlenemedi", e);
+    logError("iyzico dönüşü işlenemedi", e);
     return redirect(`/siparis/${number}?odeme=bekleniyor`);
   }
 }

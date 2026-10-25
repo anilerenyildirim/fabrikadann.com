@@ -1,4 +1,5 @@
 import "server-only";
+import { logError } from "@/server/log";
 import { unstable_rethrow } from "next/navigation";
 import type { z } from "zod";
 import { fieldErrorsOf, formToObject, safeValues, type FormState } from "@/lib/form";
@@ -23,7 +24,7 @@ export function errorState(e: unknown, values?: Record<string, string>, where = 
     return e.field ? { fieldErrors: { [e.field]: e.message }, values } : { error: e.message, values };
   }
   if (e instanceof AdminAccessError) return { error: e.message };
-  console.error(`[${where}]`, e);
+  logError(`[${where}]`, e);
   return { error: GENERIC_ERROR, values };
 }
 

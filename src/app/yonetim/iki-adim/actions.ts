@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { formToObject, type FormState } from "@/lib/form";
@@ -32,7 +33,7 @@ export async function adminTotpAction(_prev: FormState, form: FormData): Promise
     await setSessionCookie(fresh.token, fresh.expiresAt);
     await deleteSession(token);
   } catch (e) {
-    console.error("[yonetim-iki-adim]", e);
+    logError("[yonetim-iki-adim]", e);
     return { error: GENERIC_ERROR };
   }
   redirect("/yonetim");

@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { fieldErrorsOf, formToObject, safeValues, type FormState } from "@/lib/form";
@@ -29,7 +30,7 @@ export async function adminLoginAction(_prev: FormState, form: FormData): Promis
     const { token, expiresAt } = await createSession(result.userId, "admin");
     await setSessionCookie(token, expiresAt);
   } catch (e) {
-    console.error("[yonetim-giris]", e);
+    logError("[yonetim-giris]", e);
     return { error: GENERIC_ERROR, values };
   }
   redirect("/yonetim/iki-adim");

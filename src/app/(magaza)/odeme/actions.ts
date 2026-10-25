@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -111,14 +112,14 @@ export async function placeOrder(_prev: CheckoutState, form: FormData): Promise<
       }
       return { error: e.message, details: e.details, backToCart: true, values };
     }
-    console.error("Sipariş oluşturulamadı", e);
+    logError("Sipariş oluşturulamadı", e);
     return { error: "Siparişiniz oluşturulamadı. Birkaç dakika sonra tekrar deneyin.", values };
   }
 
   if (user && addressId === NEW_ADDRESS && base.data.saveAddress) {
     // Adres kaydedilemezse (ör. sınır dolu) sipariş yine de devam eder
     const title = base.data.title || "Teslimat adresi";
-    await createAddress(user.id, { ...address, title }).catch((e) => console.error("Adres kaydedilemedi", e));
+    await createAddress(user.id, { ...address, title }).catch((e) => logError("Adres kaydedilemedi", e));
   }
   if (order.guestAccessToken) await rememberGuestOrder(order.number, order.guestAccessToken);
   revalidatePath("/", "layout");
@@ -129,7 +130,7 @@ export async function placeOrder(_prev: CheckoutState, form: FormData): Promise<
     const { redirectUrl } = await startPayment(order.id, { appUrl: appUrl(), ip });
     target = paymentRedirectTarget(redirectUrl, orderPage);
   } catch (e) {
-    if (!(e instanceof PaymentError)) console.error("Ödeme başlatılamadı", e);
+    if (!(e instanceof PaymentError)) logError("Ödeme başlatılamadı", e);
     // Sipariş oluştu ve stok ayrıldı: müşteri sipariş sayfasından ödemeyi yeniden deneyebilir
     target = `${orderPage}?odeme=baslatilamadi`;
   }

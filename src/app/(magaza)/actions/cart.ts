@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { FormState } from "@/lib/form";
@@ -40,7 +41,7 @@ export async function addToCartAction(_prev: FormState, formData: FormData): Pro
     const result = await addToCart(owner, parsed.data.variantId, parsed.data.quantity);
     if (!result.ok) return { ok: false, error: result.error };
   } catch (error) {
-    console.error("Sepete ekleme başarısız", error);
+    logError("Sepete ekleme başarısız", error);
     return { ok: false, error: "Ürün sepete eklenemedi. Sayfayı yenileyip yeniden deneyin." };
   }
 

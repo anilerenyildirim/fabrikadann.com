@@ -68,7 +68,16 @@ const PRODUCTS: {
 ];
 
 async function main() {
-  console.log("Veritabanı temizleniyor (yalnızca katalog)…");
+  // Katalog tablolarını boşaltmak sipariş kalemlerini de (CASCADE) siler: sipariş varsa açıkça onay iste
+  const orderCount = (await db.execute<{ n: number }>(sql`select count(*)::int as n from orders`)).rows[0]?.n ?? 0;
+  if (orderCount > 0 && !process.argv.includes("--siparisleri-de-sil")) {
+    console.error(
+      `Veritabanında ${orderCount} sipariş var. Seed katalogla birlikte sipariş kalemlerini de siler.\n` +
+        "Yalnızca geliştirme veritabanında ve bilerek: npm run db:seed -- --siparisleri-de-sil",
+    );
+    process.exit(1);
+  }
+  console.log("Veritabanı temizleniyor (katalog, sepetler ve sipariş kalemleri)…");
   await db.execute(sql`TRUNCATE categories, products, product_colors, product_images, variants, stock_movements, cart_items, carts RESTART IDENTITY CASCADE`);
 
   const cats = await db

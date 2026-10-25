@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { stripControl } from "./text";
 
 /** Server Action'ların useActionState ile döndürdüğü ortak durum. */
 export type FormState = {
@@ -15,7 +16,7 @@ export type FormState = {
 export function formToObject(form: FormData): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of form.entries()) {
-    if (typeof v === "string") out[k] = v;
+    if (typeof v === "string") out[k] = stripControl(v);
   }
   return out;
 }

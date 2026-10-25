@@ -5,6 +5,15 @@ import { NextResponse, type NextRequest } from "next/server";
  * başlığından nonce'u okuyup kendi script etiketlerine ekler.
  */
 export function proxy(request: NextRequest) {
+  // Bozuk yüzde kodlamalı adres (ör. /urun/%ff) çerçevenin başlıksız düz 500 sayfasına düşmesin
+  try {
+    decodeURIComponent(request.nextUrl.pathname);
+  } catch {
+    return new NextResponse("Geçersiz adres", {
+      status: 400,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Content-Security-Policy": "default-src 'none'" },
+    });
+  }
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
 

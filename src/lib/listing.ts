@@ -1,3 +1,5 @@
+import { stripControl } from "./text";
+
 /**
  * Vitrin listeleme sayfalarının (tümü, kategori, arama) URL parametreleri.
  * Saf fonksiyonlar: geçersiz değerler hata vermez, yok sayılır.
@@ -69,7 +71,8 @@ export function parseListingParams(params: SearchParams): ListingQuery {
   const pageNum = pageRaw && PAGE_RE.test(pageRaw) ? Number(pageRaw) : 1;
   const page = pageNum >= 1 && pageNum <= MAX_PAGE ? pageNum : 1;
 
-  const q = (first(params.q) ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_QUERY_LENGTH).trim();
+  // NUL vb. kontrol karakterleri Postgres'te hataya yol açar
+  const q = stripControl(first(params.q) ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_QUERY_LENGTH).trim();
 
   return { sizes, sort, page, q };
 }

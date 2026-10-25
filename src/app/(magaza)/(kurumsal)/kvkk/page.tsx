@@ -106,8 +106,8 @@ export default async function KvkkPage() {
           <strong>Kargo firmaları:</strong> siparişinizin teslimi için ad soyad, teslimat adresi ve telefon numarası.
         </li>
         <li>
-          <strong>Ödeme kuruluşu (iyzico):</strong> ödemenin alınması, iadesi ve dolandırıcılığın önlenmesi için
-          sipariş tutarı ile ödeme işlemi için gereken kimlik ve iletişim bilgileri.
+          <strong>Ödeme kuruluşu (iyzico):</strong> ödemenin alınması, iadesi ve dolandırıcılığın önlenmesi için ad
+          soyad, e-posta adresi, telefon numarası, teslimat ve fatura adresi, IP adresi, sipariş içeriği ve tutarı.
         </li>
         <li>
           <strong>Barındırma, e-posta gönderimi ve teknik hizmet sağlayıcıları:</strong> Sitenin çalışması ve sipariş
@@ -137,7 +137,10 @@ export default async function KvkkPage() {
       <p>
         Kişisel verileriniz, işleme amacının gerektirdiği süre ve ilgili mevzuatta öngörülen süreler boyunca
         (ör. vergi ve ticaret mevzuatındaki defter ve belge saklama süreleri, tüketici mevzuatındaki sözleşme kaydı
-        süreleri) saklanır; bu süreler dolduğunda silinir, yok edilir ya da anonim hale getirilir. Hesabınızı
+        süreleri) saklanır; bu süreler dolduğunda silinir, yok edilir ya da anonim hale getirilir. Ödemesi
+        tamamlanmadığı için iptal edilen siparişlerdeki kişisel veriler 30 gün sonra anonim hale getirilir; güvenlik
+        kayıtlarındaki IP adresleri 1 yıl sonra silinir; parola sıfırlama bağlantıları kullanıldıktan ya da süresi
+        dolduktan sonra silinir. Hesabınızı
         kapatmak isterseniz bize yazabilirsiniz; yasal saklama yükümlülüğü bulunan kayıtlar dışındaki verileriniz
         silinir.
       </p>

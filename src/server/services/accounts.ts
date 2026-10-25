@@ -1,6 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/server/db";
+import { stripControl } from "@/lib/text";
 import { randomToken, sha256 } from "@/server/auth/crypto";
 import { burnPasswordCheck, hashPassword, passwordProblem, verifyPassword } from "@/server/auth/password";
 import { deleteUserSessions } from "@/server/auth/session";
@@ -17,7 +18,10 @@ export const emailSchema = z
   .email("Geçerli bir e-posta adresi girin.")
   .transform(normalizeEmail);
 
-export const nameSchema = z.string().trim().min(1, "Bu alan zorunlu.").max(60);
+export const nameSchema = z
+  .string()
+  .transform(stripControl)
+  .pipe(z.string().trim().min(1, "Bu alan zorunlu.").max(60));
 
 export type RegisterInput = { email: string; password: string; firstName: string; lastName: string };
 

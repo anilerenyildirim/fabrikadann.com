@@ -1,5 +1,6 @@
 "use server";
 
+import { logError } from "@/server/log";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { formToObject, type FormState } from "@/lib/form";
@@ -41,7 +42,7 @@ export async function retryPayment(_prev: FormState, form: FormData): Promise<Fo
         error: "Bu siparişin ödeme süresi doldu. Ürünleri yeniden sepete ekleyip yeni sipariş oluşturabilirsiniz.",
       };
     }
-    console.error("Ödeme yeniden başlatılamadı", e);
+    logError("Ödeme yeniden başlatılamadı", e);
     return { error: "Ödeme sayfası şu an açılamadı. Birkaç dakika sonra tekrar deneyin." };
   }
   redirect(target);
