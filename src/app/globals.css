@@ -1,1 +1,177 @@
 @import "tailwindcss";
+
+/*
+  fabrikadann tasarım sistemi — yalnızca siyah, beyaz ve gri.
+  Tek yazı ailesi (Archivo), genişlik ekseniyle iki ses:
+  - geniş (font-stretch 125%) + açık harf aralığı: logodaki gibi başlıklar ve etiketler
+  - normal genişlik: okunacak metin, formlar, fiyatlar
+*/
+
+@theme {
+  --color-paper: #ffffff;
+  --color-ink: #000000;
+  --color-graphite: #555555;
+  --color-ash: #8a8a8a;
+  --color-rule: #e2e2e2;
+  --color-fog: #f2f2f2;
+  --color-night: #111111;
+
+  --font-sans: "Archivo Variable", "Helvetica Neue", Arial, system-ui, sans-serif;
+
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+
+  --ease-cut: cubic-bezier(0.65, 0, 0.15, 1);
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+    overflow-x: clip;
+  }
+
+  body {
+    min-height: 100svh;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    background: var(--color-paper);
+  }
+
+  ::selection {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  /* iOS form alanına odaklanınca yakınlaştırmasın */
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+
+  img {
+    -webkit-user-drag: none;
+  }
+}
+
+@layer components {
+  /* Logodaki gibi geniş, açık aralıklı büyük harf */
+  .wide {
+    font-stretch: 125%;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }
+
+  /* Küçük büyük harf etiket: menüler, butonlar, alan adları */
+  .label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 450;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hairline {
+    border-color: var(--color-rule);
+  }
+
+  /* Yatay kaydırılan şeritler: kaydırma çubuğu gizli, yakalama noktalı */
+  .rail {
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+  .rail > * {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  /* Yasal metinler ve SSS gibi uzun yazılar */
+  .prose-legal {
+    max-width: 44rem;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+  .prose-legal h2 {
+    margin: 2.5rem 0 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    font-stretch: 125%;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .prose-legal p,
+  .prose-legal ul,
+  .prose-legal ol {
+    margin: 0 0 1rem;
+  }
+  .prose-legal ul {
+    list-style: square;
+    padding-left: 1.25rem;
+  }
+  .prose-legal ol {
+    list-style: decimal;
+    padding-left: 1.25rem;
+  }
+  .prose-legal a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+/* İki N: ilki ayna. Ana sayfada üst üste başlayıp yerine kayarlar (park sayfasındaki ikinci n'nin devamı). */
+@keyframes ayril-sol {
+  from {
+    transform: translateX(29%);
+  }
+}
+@keyframes ayril-sag {
+  from {
+    transform: translateX(-29%);
+  }
+}
+@keyframes belir {
+  from {
+    opacity: 0;
+  }
+}
+
+.monogram-sol {
+  animation: ayril-sol 0.9s var(--ease-cut) 0.25s backwards;
+}
+.monogram-sag {
+  animation: ayril-sag 0.9s var(--ease-cut) 0.25s backwards;
+}
+.belir {
+  animation: belir 0.6s ease 0.9s backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
