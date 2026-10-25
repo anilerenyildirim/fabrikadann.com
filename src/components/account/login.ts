@@ -12,7 +12,9 @@ import { LOGIN_FAILED, tooManyAttempts } from "./schemas";
 
 export const LOGIN_LIMITS = {
   ip: { limit: 20, windowSec: 15 * 60 },
-  email: { limit: 8, windowSec: 15 * 60 },
+  // E-posta+IP: başkası müşteriyi yanlış parolalarla kilitleyemesin; e-posta başına geniş üst sınır dağıtık denemelere karşı
+  emailIp: { limit: 8, windowSec: 15 * 60 },
+  email: { limit: 60, windowSec: 15 * 60 },
 } as const;
 
 type LoginUser = NonNullable<Awaited<ReturnType<typeof authenticate>>>;
@@ -23,6 +25,8 @@ export type LoginAttempt = { ok: true; user: Pick<LoginUser, "id" | "role"> } | 
 export async function attemptLogin(email: string, password: string, ip: string): Promise<LoginAttempt> {
   const byIp = await rateLimit(`giris:ip:${ip}`, LOGIN_LIMITS.ip.limit, LOGIN_LIMITS.ip.windowSec);
   if (!byIp.ok) return { ok: false, error: tooManyAttempts(byIp.retryAfter) };
+  const byEmailIp = await rateLimit(`giris:eposta-ip:${email}:${ip}`, LOGIN_LIMITS.emailIp.limit, LOGIN_LIMITS.emailIp.windowSec);
+  if (!byEmailIp.ok) return { ok: false, error: tooManyAttempts(byEmailIp.retryAfter) };
   const byEmail = await rateLimit(`giris:eposta:${email}`, LOGIN_LIMITS.email.limit, LOGIN_LIMITS.email.windowSec);
   if (!byEmail.ok) return { ok: false, error: tooManyAttempts(byEmail.retryAfter) };
 

@@ -106,3 +106,17 @@ test("TOTP kodu bir kez kullanılabilir", async () => {
   expect(await verifyTotpForUser(userId, secret, code)).toBe(false);
   expect(await verifyTotpForUser(userId, secret, "12345")).toBe(false);
 });
+
+test("TOTP anahtarı şifreli saklanır ve doğrulamada çözülür", async () => {
+  const { sealSecret, openSecret } = await import("@/server/auth/crypto");
+  const userId = await register();
+  const secret = generateTotpSecret();
+  const sealed = sealSecret(secret);
+  expect(sealed).toMatch(/^v1:/);
+  expect(sealed).not.toContain(secret);
+  expect(openSecret(sealed)).toBe(secret);
+  expect(sealSecret(secret)).not.toBe(sealed);
+  await db.update(schema.users).set({ totpSecret: sealed }).where(eq(schema.users.id, userId));
+  expect(await verifyTotpForUser(userId, sealed, currentTotp(secret))).toBe(true);
+  expect(() => openSecret(`${sealed.slice(0, -2)}xx`)).toThrow();
+});

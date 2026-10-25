@@ -154,7 +154,10 @@ export async function getPendingPayment(token: string) {
       token: payments.token,
       amount: payments.amount,
       status: payments.status,
+      provider: payments.provider,
       orderNumber: orders.number,
+      orderStatus: orders.status,
+      paymentExpiresAt: orders.paymentExpiresAt,
     })
     .from(payments)
     .innerJoin(orders, eq(orders.id, payments.orderId))

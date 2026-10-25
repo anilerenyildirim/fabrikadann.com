@@ -30,18 +30,28 @@ export function fieldErrorsOf(error: z.ZodError): Record<string, string> {
   return out;
 }
 
-const SENSITIVE = /password|parola|sifre|totp|code|token/i;
+// "code" yalnızca tam alan adıyla (TOTP kodu); "barcode" gibi alanlar geri doldurulabilir
+const SENSITIVE = /password|parola|sifre|totp|^code$|token/i;
 
 /** Formu hata ile geri döndürürken hassas alanları çıkarır. */
 export function safeValues(values: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(values).filter(([k]) => !SENSITIVE.test(k) && !k.startsWith("$")));
 }
 
+// Kontrol karakterleri ve ters bölü: tarayıcılar "/<sekme>/x.com"daki sekmeyi atar, "/\x.com"u
+// "//x.com" sayar — ikisi de protokole göreli dış adrese dönüşür
+const UNSAFE_PATH_CHARS = new RegExp("[\\u0000-\\u001f\\u007f\\\\]");
+
 /**
  * Giriş sonrası dönüş adresi: yalnızca site içi göreli yol kabul edilir (açık yönlendirme yok).
  */
 export function safeReturnPath(value: string | null | undefined, fallback = "/hesabim"): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\") || value.length > 300) {
+  if (!value || value.length > 300 || !value.startsWith("/")) return fallback;
+  if (UNSAFE_PATH_CHARS.test(value) || value.startsWith("//")) return fallback;
+  try {
+    // Son kontrol: gerçekten bu sitede mi çözülüyor?
+    if (new URL(value, "https://fabrikadann.invalid").host !== "fabrikadann.invalid") return fallback;
+  } catch {
     return fallback;
   }
   return value;

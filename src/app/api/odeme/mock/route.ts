@@ -31,7 +31,8 @@ export async function POST(request: Request) {
   if (result !== "basarili" && result !== "basarisiz") return plain(400, "Geçersiz istek");
 
   const pending = await getPendingPayment(token);
-  if (!pending) return plain(404, "Bulunamadı");
+  // Yalnızca test sağlayıcısıyla başlatılmış ödemeler buradan tamamlanabilir
+  if (!pending || pending.provider !== "mock") return plain(404, "Bulunamadı");
 
   const success = result === "basarili";
   const outcome = await completePayment({

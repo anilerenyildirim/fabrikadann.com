@@ -54,7 +54,7 @@ export function TextField({ label, error, hint, id, name, className = "", ...pro
         name={name}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
-        className={`min-h-11 border-0 border-b bg-transparent px-0 py-2 outline-none transition-colors placeholder:text-ash focus:border-ink focus-visible:outline-none ${
+        className={`min-h-11 border-0 border-b bg-transparent px-0 py-2 outline-none transition-colors placeholder:text-ash focus:border-ink focus:shadow-[0_1px_0_0_var(--color-ink)] ${
           error ? "border-ink border-b-2" : "border-ash"
         }`}
         {...props}
@@ -84,7 +84,7 @@ export function SelectField({
         name={name}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${fieldId}-hata` : undefined}
-        className={`min-h-11 appearance-none rounded-none border-0 border-b bg-transparent bg-[length:10px] bg-[right_2px_center] bg-no-repeat px-0 py-2 pr-6 outline-none focus:border-ink ${
+        className={`min-h-11 appearance-none rounded-none border-0 border-b bg-transparent bg-[length:10px] bg-[right_2px_center] bg-no-repeat px-0 py-2 pr-6 outline-none focus:border-ink focus:shadow-[0_1px_0_0_var(--color-ink)] ${
           error ? "border-ink border-b-2" : "border-ash"
         }`}
         style={{
@@ -173,6 +173,7 @@ export function Checkbox({
           name={name}
           type="checkbox"
           aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${fieldId}-hata` : undefined}
           className="peer mt-0.5 size-[18px] shrink-0 cursor-pointer appearance-none border border-ink bg-paper checked:bg-ink"
           style={{
             backgroundImage:

@@ -52,12 +52,14 @@ describe("yönetim girişi", () => {
     expect(await adminPasswordStep("yeni@ornek.com", PW, "1.1.1.1")).toEqual({ ok: false, error: ADMIN_NO_TOTP_ERROR });
   });
 
-  test("aynı e-postaya 5 denemeden sonra, aynı IP'den 10 denemeden sonra durdurulur", async () => {
+  test("aynı IP'den aynı e-postaya 5 denemeden sonra durdurulur; başka IP'deki yönetici kilitlenmez", async () => {
     await userWith("admin", "yonetici@ornek.com", generateTotpSecret());
-    for (let i = 0; i < 5; i++) await adminPasswordStep("yonetici@ornek.com", "yanlis-parola-1", `2.2.2.${i}`);
-    const blocked = await adminPasswordStep("yonetici@ornek.com", PW, "2.2.2.9");
+    for (let i = 0; i < 5; i++) await adminPasswordStep("yonetici@ornek.com", "yanlis-parola-1", "2.2.2.1");
+    const blocked = await adminPasswordStep("yonetici@ornek.com", PW, "2.2.2.1");
     expect(blocked.ok).toBe(false);
     expect(!blocked.ok && blocked.error).toMatch(/Çok fazla deneme/);
+    // Saldırganın denemeleri gerçek yöneticiyi başka ağdan kilitlemez
+    expect((await adminPasswordStep("yonetici@ornek.com", PW, "2.2.2.200")).ok).toBe(true);
 
     for (let i = 0; i < 10; i++) await adminPasswordStep(`kisi${i}@ornek.com`, "x", "3.3.3.3");
     const byIp = await adminPasswordStep("baska@ornek.com", PW, "3.3.3.3");

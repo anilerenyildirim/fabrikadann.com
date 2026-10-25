@@ -28,8 +28,15 @@ export const getSession = cache(async (): Promise<ValidSession | null> => {
   return token ? validateSessionToken(token) : null;
 });
 
+/**
+ * Vitrin açısından giriş yapmış kullanıcı. İki adımlı doğrulamayı tamamlamamış yönetici oturumu
+ * (yalnızca parola girilmiş) hiçbir yerde giriş yapmış sayılmaz.
+ */
 export async function getCurrentUser() {
-  return (await getSession())?.user ?? null;
+  const session = await getSession();
+  if (!session) return null;
+  if (session.user.role === "admin" && !session.secondFactor) return null;
+  return session.user;
 }
 
 export async function signOut() {

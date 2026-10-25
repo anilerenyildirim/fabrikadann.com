@@ -13,8 +13,9 @@ export const settingsSchema = z.object({
   email: z.string().max(200),
   phone: z.string().max(30),
   kepAddress: z.string().max(200),
-  instagramUrl: z.string().max(300),
-  trendyolUrl: z.string().max(300),
+  // Alt bilgide bağlantı olarak basılır: yalnızca https (javascript: vb. engellenir) ya da boş
+  instagramUrl: z.union([z.literal(""), z.string().max(300).url().startsWith("https://")]),
+  trendyolUrl: z.union([z.literal(""), z.string().max(300).url().startsWith("https://")]),
   announcement: z.string().max(200),
 });
 

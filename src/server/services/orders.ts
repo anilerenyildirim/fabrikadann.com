@@ -13,6 +13,8 @@ const { orders, orderItems, carts } = schema;
 export const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 export const MAX_ITEMS_PER_ORDER = 10;
 export const MAX_OPEN_ORDERS = 2;
+/** Mobil operatörlerde çok kişi aynı IP'yi paylaşır: IP için daha geniş sınır */
+export const MAX_OPEN_ORDERS_PER_IP = 5;
 
 export type OrderStatus = (typeof schema.orderStatus.enumValues)[number];
 
@@ -96,21 +98,18 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
     }
     // Aynı IP'den eşzamanlı siparişler sıraya girsin ki sayım doğru olsun
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`siparis:${input.ip}`}))`);
+    const openWhere = and(eq(orders.status, "awaiting_payment"), gt(orders.paymentExpiresAt, new Date()));
     const [open] = await tx
-      .select({ n: sql<number>`count(*)::int` })
+      .select({
+        byPerson: sql<number>`count(*) filter (where ${or(
+          eq(orders.email, input.email),
+          input.userId ? eq(orders.userId, input.userId) : undefined,
+        )})::int`,
+        byIp: sql<number>`count(*) filter (where ${eq(orders.termsAcceptedIp, input.ip)})::int`,
+      })
       .from(orders)
-      .where(
-        and(
-          eq(orders.status, "awaiting_payment"),
-          gt(orders.paymentExpiresAt, new Date()),
-          or(
-            eq(orders.termsAcceptedIp, input.ip),
-            eq(orders.email, input.email),
-            input.userId ? eq(orders.userId, input.userId) : undefined,
-          ),
-        ),
-      );
-    if ((open?.n ?? 0) >= MAX_OPEN_ORDERS) {
+      .where(openWhere);
+    if ((open?.byPerson ?? 0) >= MAX_OPEN_ORDERS || (open?.byIp ?? 0) >= MAX_OPEN_ORDERS_PER_IP) {
       throw new OrderError(
         "too_many_open_orders",
         "Ödemesi tamamlanmamış siparişleriniz var. Önce onları tamamlayın ya da 30 dakika sonra yeniden deneyin.",

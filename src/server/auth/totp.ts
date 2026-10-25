@@ -1,6 +1,7 @@
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { Secret, TOTP } from "otpauth";
 import { db, schema } from "@/server/db";
+import { openSecret } from "./crypto";
 
 const PERIOD = 30;
 
@@ -32,8 +33,10 @@ export function currentTotp(secret: string): string {
  * Kodu doğrular ve kullanılan zaman adımını kaydeder; aynı kod (ya da daha eski bir adımın kodu)
  * ikinci kez kabul edilmez.
  */
-export async function verifyTotpForUser(userId: string, secret: string, code: string): Promise<boolean> {
+export async function verifyTotpForUser(userId: string, storedSecret: string, code: string): Promise<boolean> {
   if (!/^\d{6}$/.test(code)) return false;
+  // Veritabanındaki anahtar şifreli (sealSecret); eski düz kayıtlar da okunur
+  const secret = openSecret(storedSecret);
   // Doğrulama ve adım hesabı aynı zamandan yapılır (pencere sınırında yanlış adım kaydedilmesin)
   const now = Date.now();
   const delta = totpFor(secret).validate({ token: code, window: 1, timestamp: now });

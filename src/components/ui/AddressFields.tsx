@@ -18,7 +18,9 @@ export function AddressFields({
 }) {
   const n = (k: string) => `${prefix}${k}`;
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
+    // React 19 form eyleminden sonra formu ilk değerlerine sıfırlar; sunucunun döndürdüğü değerler
+    // değişince alanları yeniden kurmak seçili ilin "Seçin"e dönmesini önler
+    <div className="grid gap-6 sm:grid-cols-2" key={JSON.stringify(values)}>
       {withTitle && (
         <TextField
           className="sm:col-span-2"

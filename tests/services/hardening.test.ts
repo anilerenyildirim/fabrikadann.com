@@ -26,18 +26,18 @@ test("bir siparişte en fazla 10 çift", async () => {
   expect(await stockOf(variants[0]!.id)).toBe(9);
 });
 
-test("aynı IP ya da e-postayla en fazla 2 ödenmemiş sipariş", async () => {
+test("aynı e-postayla en fazla 2, aynı IP'den en fazla 5 ödenmemiş sipariş", async () => {
   const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 20 }] });
   const mk = (n: number, ip: string, email: string) =>
     addToCart({ guestToken: `g${n}` }, variants[0]!.id).then(() =>
       createOrder({ guestToken: `g${n}` }, { email, userId: null, address, ip }),
     );
-  await mk(1, "5.5.5.5", "a@x.com");
-  await mk(2, "5.5.5.5", "b@x.com");
-  await expect(mk(3, "5.5.5.5", "c@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
-  await expect(mk(4, "6.6.6.6", "a@x.com")).resolves.toBeTruthy();
-  await expect(mk(5, "6.6.6.6", "a@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
-  await expect(mk(6, "7.7.7.7", "d@x.com")).resolves.toBeTruthy();
+  await mk(1, "6.6.6.6", "a@x.com");
+  await mk(2, "7.7.7.7", "a@x.com");
+  await expect(mk(3, "8.8.8.8", "a@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
+  // Mobil operatörde aynı IP'yi paylaşan farklı müşteriler: 5'e kadar
+  for (let i = 0; i < 5; i++) await mk(10 + i, "5.5.5.5", `kisi${i}@x.com`);
+  await expect(mk(20, "5.5.5.5", "yeni@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
 });
 
 test("yöneticinin iptal ettiği sipariş geç gelen ödemeyle canlanmaz, iade gerekli olur", async () => {

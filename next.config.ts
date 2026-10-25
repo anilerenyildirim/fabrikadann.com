@@ -20,6 +20,8 @@ const config: NextConfig = {
   images: { unoptimized: true },
   experimental: {
     serverActions: { bodySizeLimit: "12mb" },
+    // Proxy gövdeyi varsayılan 10 MB'ta keser; görsel yüklemesi (10 MB + form alanları) sığsın
+    proxyClientMaxBodySize: "12mb",
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

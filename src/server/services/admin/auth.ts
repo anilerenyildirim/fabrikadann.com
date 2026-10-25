@@ -25,7 +25,11 @@ export async function adminPasswordStep(email: string, password: string, ip: str
   const normalized = normalizeEmail(email).slice(0, 254);
   const byIp = await rateLimit(`yonetim-giris:ip:${ip}`, 10, 900);
   if (!byIp.ok) return tooMany(byIp.retryAfter);
-  const byEmail = await rateLimit(`yonetim-giris:eposta:${normalized}`, 5, 900);
+  // E-posta sınırı IP ile birlikte tutulur: başka biri yöneticiyi yanlış parolalarla kilitleyemesin.
+  // Dağıtık denemelere karşı e-posta başına geniş bir üst sınır da var (parola tek başına yetmez; TOTP gerekir).
+  const byEmailIp = await rateLimit(`yonetim-giris:eposta-ip:${normalized}:${ip}`, 5, 900);
+  if (!byEmailIp.ok) return tooMany(byEmailIp.retryAfter);
+  const byEmail = await rateLimit(`yonetim-giris:eposta:${normalized}`, 60, 900);
   if (!byEmail.ok) return tooMany(byEmail.retryAfter);
 
   const user = await authenticate(normalized, password);

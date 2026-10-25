@@ -14,6 +14,7 @@ import { hashPassword, passwordProblem } from "@/server/auth/password";
 import { clearRateLimit } from "@/server/auth/rate-limit";
 import { deleteUserSessions } from "@/server/auth/session";
 import { generateTotpSecret, totpUri } from "@/server/auth/totp";
+import { sealSecret } from "@/server/auth/crypto";
 import { audit } from "@/server/services/audit";
 
 const USAGE = `
@@ -23,7 +24,8 @@ Kullanım:
 
   Hesap yoksa yönetici olarak oluşturulur. Parola ADMIN_PASSWORD ortam değişkeninden alınır;
   verilmezse güçlü bir parola üretilip bir kez ekrana yazılır.
-  Hesap varsa rolü yönetici yapılır (parolası değişmez).
+  Hesap müşteri hesabı olarak zaten varsa yalnızca --promote ile yönetici yapılır ve parolası
+  yenilenir (e-posta sahipliği doğrulanmadığı için eski parola güvenilir sayılmaz).
   İki adımlı doğrulama anahtarı yoksa ya da --reset-totp verildiyse yeni anahtar üretilir ve
   ekrana yazılır. Anahtarı Google Authenticator, 1Password ya da benzeri bir uygulamaya ekleyin.
   --unlock: "Çok fazla deneme" yüzünden giriş yapamıyorsanız bu hesabın giriş ve doğrulama kodu
@@ -43,7 +45,7 @@ function fail(message: string): never {
 const args = process.argv.slice(2).filter((a) => a !== "--");
 const flags = new Set(args.filter((a) => a.startsWith("--")));
 const positional = args.filter((a) => !a.startsWith("--"));
-const unknown = [...flags].filter((f) => f !== "--reset-totp" && f !== "--unlock" && f !== "--help");
+const unknown = [...flags].filter((f) => !["--reset-totp", "--unlock", "--help", "--promote"].includes(f));
 
 if (flags.has("--help")) {
   console.log(USAGE);
@@ -76,6 +78,7 @@ async function unlockAccount() {
   });
   if (!user || user.role !== "admin") fail(`${email} adresinde yönetici hesabı yok.`);
   await clearRateLimit(`yonetim-giris:eposta:${email}`);
+  await clearRateLimit(`giris:eposta:${email}`);
   await clearRateLimit(`totp:${user.id}`);
   await clearRateLimit(`totp:gun:${user.id}`);
   await audit({ action: "admin.cli.unlock", actorId: user.id, target: email });
@@ -107,7 +110,7 @@ async function main() {
         firstName,
         lastName,
         role: "admin",
-        totpSecret,
+        totpSecret: sealSecret(totpSecret),
         totpLastStep: null,
       })
       .returning({ id: schema.users.id });
@@ -117,22 +120,36 @@ async function main() {
   } else {
     userId = existing.id;
     if (existing.role !== "admin") {
-      await db.update(schema.users).set({ role: "admin" }).where(eq(schema.users.id, userId));
+      if (!flags.has("--promote")) {
+        fail(`${email} bir müşteri hesabı. Yönetici yapmak için --promote ekleyin (parolası yenilenir).`);
+      }
+      // Hesabı kimin açtığı bilinmiyor: parola her durumda yenilenir
+      let password = process.env.ADMIN_PASSWORD ?? "";
+      if (!password) {
+        password = randomBytes(18).toString("base64url");
+        generatedPassword = password;
+      }
+      const problem = passwordProblem(password, { email });
+      if (problem) fail(`ADMIN_PASSWORD uygun değil: ${problem}`);
+      await db
+        .update(schema.users)
+        .set({ role: "admin", passwordHash: await hashPassword(password) })
+        .where(eq(schema.users.id, userId));
       // Müşteri olarak açılmış (30 günlük) oturumlar yönetici yetkisiyle devam etmesin
       await deleteUserSessions(userId);
       await audit({ action: "admin.cli.promote", actorId: userId, target: email });
-      lines.push(`Mevcut hesap yönetici yapıldı: ${email} (açık oturumları kapatıldı; parolası değişmedi)`);
+      lines.push(`Mevcut hesap yönetici yapıldı: ${email} (açık oturumları kapatıldı, parolası yenilendi)`);
     } else {
       lines.push(`Hesap zaten yönetici: ${email}`);
     }
-    if (process.env.ADMIN_PASSWORD) {
-      lines.push("Not: Hesap zaten var; ADMIN_PASSWORD yok sayıldı. Parolayı sitedeki parola sıfırlamayla değiştirin.");
+    if (process.env.ADMIN_PASSWORD && existing.role === "admin") {
+      lines.push("Not: Hesap zaten yönetici; ADMIN_PASSWORD yok sayıldı.");
     }
     if (!totpSecret || resetTotp) {
       totpSecret = generateTotpSecret();
       await db
         .update(schema.users)
-        .set({ totpSecret, totpLastStep: null })
+        .set({ totpSecret: sealSecret(totpSecret), totpLastStep: null })
         .where(eq(schema.users.id, userId));
       await deleteUserSessions(userId);
       await audit({ action: "admin.cli.totp_reset", actorId: userId, target: email });
