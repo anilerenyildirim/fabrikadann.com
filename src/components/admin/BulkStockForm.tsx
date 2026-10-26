@@ -5,7 +5,7 @@ import { Button, TextArea } from "@/components/ui/form";
 import type { BulkResult } from "@/server/services/admin/bulk-stock";
 import type { FormState } from "@/lib/form";
 import { firstError, InlineError, InlineOk, useSubmitWithoutReset } from "./forms";
-import { table, TableWrap, td, th } from "./ui";
+import { table, TableWrap, td, th } from "./table";
 
 type BulkState = FormState & { result?: BulkResult };
 
