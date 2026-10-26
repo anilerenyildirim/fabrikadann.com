@@ -1,10 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { config } from "dotenv";
 import { TOTP } from "otpauth";
+
+// Yerel .env (gitignore'da) değerleri
+config({ quiet: true });
 
 /**
  * Yönetim paneli sayfaları telefonda ve masaüstünde taşmıyor, dokunma hedefleri yeterli.
  * Yalnızca yerel geliştirme veritabanındaki bir yönetici hesabıyla çalışır:
- *   E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD, E2E_ADMIN_TOTP_SECRET (base32)
+ *   E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD, E2E_ADMIN_TOTP_SECRET (base32) — ortamdan ya da yerel .env'den
  * Tanımlı değilse atlanır.
  */
 const email = process.env.E2E_ADMIN_EMAIL;

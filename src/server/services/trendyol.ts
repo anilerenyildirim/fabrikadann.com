@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, pool, schema, type Tx } from "@/server/db";
 import { describeError } from "@/server/log";
 import { TrendyolError, trendyolConfig, type TrendyolClient, type TrendyolPackage } from "@/server/trendyol/client";
@@ -331,48 +331,43 @@ async function takeAvailable(tx: Tx, variantId: string, quantity: number, refere
 
 async function pushStock(deps: SyncDeps, now: Date) {
   const pushErrors: string[] = [];
-  // Numaradan kaldırılan ya da değiştirilen eski barkod Trendyol'da son adetle satışta kalmasın: 0 gönderilir.
-  // Barkod başka bir numaraya geçtiyse o numaranın stoğu gönderileceği için atlanır.
-  const orphans = await db
-    .select({ variantId: trendyolStockPush.variantId, barcode: trendyolStockPush.barcode })
-    .from(trendyolStockPush)
-    .innerJoin(variants, eq(variants.id, trendyolStockPush.variantId))
-    .where(
-      sql`${variants.barcode} is distinct from ${trendyolStockPush.barcode}
-        and not exists (select 1 from variants v2 where v2.barcode = ${trendyolStockPush.barcode})`,
-    )
-    .limit(PUSH_CHUNK);
-  if (orphans.length) {
-    try {
-      await deps.client.updateInventory(orphans.map((o) => ({ barcode: o.barcode, quantity: 0 })));
-      // Kayıt silinir: numaranın yeni barkodu (varsa) aşağıda baştan gönderilir
-      await db.delete(trendyolStockPush).where(inArray(trendyolStockPush.variantId, orphans.map((o) => o.variantId)));
-    } catch (e) {
-      if (!(e instanceof TrendyolError)) throw e;
-      pushErrors.push(e.message);
-    }
-  }
-
+  const retryBefore = new Date(now.getTime() - RETRY_FAILED_MS);
   const sendQuantity = sql<number>`least(${variants.stock}, ${MAX_QUANTITY})`;
-  const candidates = await db
+  // Barkodu olan numaralar: satılabilir stok, son gönderilenden farklıysa
+  const live = await db
     .select({ variantId: variants.id, barcode: variants.barcode, quantity: sendQuantity })
     .from(variants)
-    .leftJoin(trendyolStockPush, eq(trendyolStockPush.variantId, variants.id))
+    .leftJoin(trendyolStockPush, eq(trendyolStockPush.barcode, variants.barcode))
     .where(
       and(
         isNotNull(variants.barcode),
-        sql`(${trendyolStockPush.variantId} is null
-          or ${trendyolStockPush.barcode} <> ${variants.barcode}
+        sql`(${trendyolStockPush.barcode} is null
           or ${trendyolStockPush.quantity} <> ${sendQuantity}
-          or (${trendyolStockPush.status} = 'failed' and ${trendyolStockPush.pushedAt} < ${new Date(now.getTime() - RETRY_FAILED_MS)}))`,
+          or (${trendyolStockPush.status} = 'failed' and ${trendyolStockPush.pushedAt} < ${retryBefore}))`,
       ),
     )
     .orderBy(asc(variants.id))
     .limit(PUSH_CHUNK * 5);
+  // Artık hiçbir numarada olmayan barkod (numara silindi ya da barkodu değişti) Trendyol'da eski adetle
+  // satışta kalmasın: 0 gönderilir
+  const retired = await db
+    .select({ barcode: trendyolStockPush.barcode })
+    .from(trendyolStockPush)
+    .where(
+      sql`not exists (select 1 from ${variants} where ${variants.barcode} = ${trendyolStockPush.barcode})
+        and (${trendyolStockPush.quantity} <> 0
+          or (${trendyolStockPush.status} = 'failed' and ${trendyolStockPush.pushedAt} < ${retryBefore}))`,
+    )
+    .orderBy(asc(trendyolStockPush.barcode))
+    .limit(PUSH_CHUNK * 5);
 
+  const items = [
+    ...live.map((c) => ({ variantId: c.variantId as string | null, barcode: c.barcode!, quantity: Number(c.quantity) })),
+    ...retired.map((r) => ({ variantId: null, barcode: r.barcode, quantity: 0 })),
+  ];
   let pushed = 0;
-  for (let i = 0; i < candidates.length; i += PUSH_CHUNK) {
-    const chunk = candidates.slice(i, i + PUSH_CHUNK).map((c) => ({ ...c, barcode: c.barcode!, quantity: Number(c.quantity) }));
+  for (let i = 0; i < items.length; i += PUSH_CHUNK) {
+    const chunk = items.slice(i, i + PUSH_CHUNK);
     let batchRequestId: string;
     try {
       batchRequestId = await deps.client.updateInventory(chunk.map((c) => ({ barcode: c.barcode, quantity: c.quantity })));
@@ -384,11 +379,11 @@ async function pushStock(deps: SyncDeps, now: Date) {
       continue;
     }
     for (const c of chunk) {
-      const values = { barcode: c.barcode, quantity: c.quantity, batchRequestId, status: "pending" as const, error: null, pushedAt: now };
+      const values = { variantId: c.variantId, quantity: c.quantity, batchRequestId, status: "pending" as const, error: null, pushedAt: now };
       await db
         .insert(trendyolStockPush)
-        .values({ variantId: c.variantId, ...values })
-        .onConflictDoUpdate({ target: trendyolStockPush.variantId, set: values });
+        .values({ barcode: c.barcode, ...values })
+        .onConflictDoUpdate({ target: trendyolStockPush.barcode, set: values });
     }
     pushed += chunk.length;
   }
@@ -439,7 +434,7 @@ async function checkPushResults(deps: SyncDeps, now: Date): Promise<number> {
             ? { status: "ok", error: null }
             : { status: "failed", error: r?.reasons.join("; ").slice(0, 500) || "Trendyol sonucu alınamadı" },
         )
-        .where(and(eq(trendyolStockPush.variantId, row.variantId), pending));
+        .where(and(eq(trendyolStockPush.barcode, row.barcode), pending));
     }
   }
   return checked;
@@ -450,7 +445,8 @@ async function checkPushResults(deps: SyncDeps, now: Date): Promise<number> {
 /**
  * Barkodu olan ürünlerin Trendyol satış fiyatını okur; ürünün Trendyol fiyatı, satıştaki barkodlarının en
  * düşüğüdür. Trendyol fiyatı sitedekinden yüksek değilse karşılaştırma kaldırılır (yanıltıcı olmasın) ve
- * panelde uyarı gösterilir. Okunamayan ürünlerde elle girilen değer kalır. Hata stok senkronunu durdurmaz.
+ * panelde uyarı gösterilir; hiçbir barkodu satışta değilse de kaldırılır. Barkodu olmayan üründe elle girilen
+ * değer kalır. Hata stok senkronunu durdurmaz.
  */
 async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
   if (state.lastPriceSyncAt && now.getTime() - state.lastPriceSyncAt < PRICE_SYNC_MS) {
@@ -462,6 +458,7 @@ async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
     .innerJoin(productColors, eq(productColors.id, variants.colorId))
     .innerJoin(products, eq(products.id, productColors.productId))
     .where(and(isNotNull(variants.barcode), sql`${products.status} <> 'archived'`))
+    .orderBy(asc(products.id))
     .limit(10_000);
   const barcodes = [...new Set(rows.map((r) => r.barcode!))];
   const prices = new Map<string, number>();
@@ -487,16 +484,27 @@ async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
   let updated = 0;
   const warnings: PriceWarning[] = [];
   for (const [productId, e] of byProduct) {
-    if (e.min === null) continue;
-    const next = e.min > e.price ? e.min : null;
-    if (next === null) warnings.push({ productId, name: e.name, price: e.price, trendyolPrice: e.min });
-    if (next === e.current) continue;
-    await db.transaction(async (tx) => {
+    // Barkodları var ama hiçbiri Trendyol'da satışta değil: karşılaştırma kaldırılır (satılmayan ürünün fiyatı gösterilmez)
+    const changed = await db.transaction(async (tx) => {
+      // Okuma ile yazma arasında yönetici fiyatı değiştirmiş olabilir: güncel değerle karar verilir
+      const [fresh] = await tx
+        .select({ price: products.price, trendyolPrice: products.trendyolPrice })
+        .from(products)
+        .where(eq(products.id, productId))
+        .for("update");
+      if (!fresh) return false;
+      const next = e.min !== null && e.min > fresh.price ? e.min : null;
+      if (e.min !== null && next === null) warnings.push({ productId, name: e.name, price: fresh.price, trendyolPrice: e.min });
+      if (next === fresh.trendyolPrice) return false;
       await tx.update(products).set({ trendyolPrice: next }).where(eq(products.id, productId));
       // Karşılaştırmalı fiyatın kaynağı kayıtlı kalsın
-      await audit({ action: "product.trendyol_price", target: productId, data: { from: e.current, to: next, trendyolSalePrice: e.min } }, tx);
+      await audit(
+        { action: "product.trendyol_price", target: productId, data: { from: fresh.trendyolPrice, to: next, trendyolSalePrice: e.min } },
+        tx,
+      );
+      return true;
     });
-    updated++;
+    if (changed) updated++;
   }
   return { updated, ranAt: now.getTime(), warnings: warnings.slice(0, 50), error: undefined };
 }
@@ -508,7 +516,16 @@ export type TrendyolStatus = {
   configError: string | null;
   state: SyncState;
   pendingPushes: number;
-  failedPushes: { variantId: string; productId: string; productName: string; colorName: string; size: string; barcode: string; error: string | null; pushedAt: Date }[];
+  failedPushes: {
+    barcode: string;
+    /** Barkod artık hiçbir numarada değilse null (0 gönderiliyor) */
+    productId: string | null;
+    productName: string | null;
+    colorName: string | null;
+    size: string | null;
+    error: string | null;
+    pushedAt: Date;
+  }[];
   unmatched: { orderNumber: string; barcode: string; quantity: number }[];
   shortfalls: { orderNumber: string; productId: string; productName: string; colorName: string; size: string; barcode: string; shortfall: number }[];
 };
@@ -526,19 +543,18 @@ export async function getTrendyolStatus(): Promise<TrendyolStatus> {
     db.select({ n: sql<number>`count(*)::int` }).from(trendyolStockPush).where(eq(trendyolStockPush.status, "pending")),
     db
       .select({
-        variantId: trendyolStockPush.variantId,
+        barcode: trendyolStockPush.barcode,
         productId: products.id,
         productName: products.name,
         colorName: productColors.name,
         size: variants.size,
-        barcode: trendyolStockPush.barcode,
         error: trendyolStockPush.error,
         pushedAt: trendyolStockPush.pushedAt,
       })
       .from(trendyolStockPush)
-      .innerJoin(variants, eq(variants.id, trendyolStockPush.variantId))
-      .innerJoin(productColors, eq(productColors.id, variants.colorId))
-      .innerJoin(products, eq(products.id, productColors.productId))
+      .leftJoin(variants, eq(variants.barcode, trendyolStockPush.barcode))
+      .leftJoin(productColors, eq(productColors.id, variants.colorId))
+      .leftJoin(products, eq(products.id, productColors.productId))
       .where(eq(trendyolStockPush.status, "failed"))
       .orderBy(desc(trendyolStockPush.pushedAt))
       .limit(50),

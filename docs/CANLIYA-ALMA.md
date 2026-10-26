@@ -99,11 +99,11 @@ Site ve Trendyol aynı depodan satar. Stoğun kaynağı sitedir (panel → Stok)
 - Trendyol'da oluşan sipariş, numaranın stoğundan düşülür (eşleşme **barkodla**: panelde her numaranın
   barkodu Trendyol'daki barkodla aynı olmalı). İptal edilen / tedarik edilemeyen paketlerin adedi geri konur.
 - Barkodu olan her numaranın satılabilir stoğu değiştiğinde Trendyol'a gönderilir (fiyat gönderilmez;
-  Trendyol fiyatını Trendyol panelinden yönetin).
+  Trendyol fiyatını Trendyol panelinden yönetin). Numara silinir ya da barkodu değişirse eski barkoda 0 gönderilir.
 - Ürün sayfasındaki "Trendyol'da X TL" karşılaştırması saatte bir Trendyol'daki satış fiyatından güncellenir
   (ürünün satıştaki barkodlarının en düşüğü; her değişiklik işlem günlüğüne yazılır). Trendyol fiyatı sitedekinden
-  yüksek değilse karşılaştırma kaldırılır ve panelde uyarı çıkar. Barkodu Trendyol'da bulunmayan üründe elle
-  girilen değer kalır.
+  yüksek değilse ya da ürünün hiçbir barkodu Trendyol'da satışta değilse karşılaştırma kaldırılır (ilkinde
+  panelde uyarı çıkar). Barkodu olmayan üründe elle girilen değer kalır.
 - Trendyol iadeleri (Returned) stoğa otomatik dönmez: ürün kontrol edildikten sonra panelden elle ekleyin.
 - Depo sayımında Trendyol'da henüz kargolanmamış siparişler de "ayrılmış" sayılır.
 

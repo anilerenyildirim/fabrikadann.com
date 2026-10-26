@@ -384,12 +384,11 @@ export const trendyolOrderStock = pgTable(
 
 export const trendyolPushStatus = pgEnum("trendyol_push_status", ["pending", "ok", "failed"]);
 
-// Trendyol'a en son gönderilen stok (numara başına)
+// Trendyol'a bir barkod için en son gönderilen stok. Trendyol'da kimlik barkoddur: numara silinse ya da
+// barkodu değişse de kayıt kalır ve eski barkoda 0 gönderilir.
 export const trendyolStockPush = pgTable("trendyol_stock_push", {
-  variantId: uuid("variant_id")
-    .primaryKey()
-    .references(() => variants.id, { onDelete: "cascade" }),
-  barcode: text("barcode").notNull(),
+  barcode: text("barcode").primaryKey(),
+  variantId: uuid("variant_id").references(() => variants.id, { onDelete: "set null" }),
   quantity: integer("quantity").notNull(),
   batchRequestId: text("batch_request_id"),
   status: trendyolPushStatus("status").notNull(),

@@ -24,6 +24,9 @@ export function trendyolProblems(s: TrendyolStatus, now = Date.now()): string[] 
   }
   if (summary?.skippedPackages) problems.push(`Son çalıştırmada ${summary.skippedPackages} Trendyol paketi okunamadı ve işlenmedi.`);
   if (summary?.priceError) problems.push(`Trendyol fiyatları okunamadı: ${summary.priceError}`);
+  if (s.state.lastSuccessAt && (!s.state.lastPriceSyncAt || now - s.state.lastPriceSyncAt > 3 * 3600_000)) {
+    problems.push("Trendyol fiyatları 3 saattir güncellenemedi; vitrindeki karşılaştırma fiyatları eski olabilir.");
+  }
   if (s.state.priceWarnings?.length) {
     problems.push(`${s.state.priceWarnings.length} ürün Trendyol'da sitedekinden ucuz ya da aynı fiyatta; vitrinde karşılaştırma gösterilmiyor.`);
   }
@@ -152,13 +155,22 @@ export function TrendyolPanel({ status: s, syncAction }: { status: TrendyolStatu
       {s.failedPushes.length > 0 && (
         <List title="Trendyol'a gönderilemeyen stoklar">
           {s.failedPushes.map((r) => (
-            <li key={r.variantId} className="py-2.5">
+            <li key={r.barcode} className="py-2.5">
               <div className="flex flex-wrap items-center gap-x-2">
-                <Link href={`/yonetim/urunler/${r.productId}#numaralar`} className="inline-flex min-h-11 items-center underline underline-offset-4">
-                  {r.productName}
-                </Link>
+                {r.productId ? (
+                  <Link href={`/yonetim/urunler/${r.productId}#numaralar`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+                    {r.productName}
+                  </Link>
+                ) : (
+                  <span className="inline-flex min-h-11 items-center">Hiçbir numarada olmayan barkod (Trendyol'a 0 gönderiliyor)</span>
+                )}
                 <span className="text-graphite">
-                  {r.colorName} · {r.size} · <span className="tabular">{r.barcode}</span>
+                  {r.productId && (
+                    <>
+                      {r.colorName} · {r.size} ·{" "}
+                    </>
+                  )}
+                  <span className="tabular">{r.barcode}</span>
                 </span>
               </div>
               <p className="break-words text-graphite">

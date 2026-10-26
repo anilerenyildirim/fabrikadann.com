@@ -432,4 +432,49 @@ describe("senkron", () => {
     await run();
     expect(fake.posts).toHaveLength(after);
   });
+
+  test("silinen numaranın barkodu Trendyol'a 0 gönderilir; reddedilirse yeniden denenir", async () => {
+    const admin = await makeUser({ role: "admin" });
+    const { variants } = await makeProduct({ status: "draft", sizes: [{ size: "40", stock: 5 }, { size: "41", stock: 1 }] });
+    await db.update(schema.variants).set({ barcode: "DEL-40" }).where(eq(schema.variants.id, variants[0]!.id));
+    await run();
+    await deleteVariant(variants[0]!.id, { actorId: admin.id, ip: "10.0.0.1" });
+    const before = fake.posts.length;
+    await run();
+    expect(fake.posts.slice(before).flatMap((p) => p.items)).toEqual([{ barcode: "DEL-40", quantity: 0 }]);
+    // Trendyol reddetti: 15 dakika sonra yeniden gönderilir
+    fake.batchItems.set(`batch-${fake.posts.length}`, [{ barcode: "DEL-40", status: "FAILED", reasons: ["Aynı istek"] }]);
+    await run();
+    const mid = fake.posts.length;
+    await run(17 * 60_000);
+    expect(fake.posts.slice(mid).flatMap((p) => p.items)).toEqual([{ barcode: "DEL-40", quantity: 0 }]);
+  });
+
+  test("başka numaraya taşınan barkod sıfırlanmaz; sonra kaldırılınca tek kez 0 gönderilir", async () => {
+    const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 2 }, { size: "41", stock: 7 }] });
+    const [a, b] = variants;
+    await db.update(schema.variants).set({ barcode: "MOVE" }).where(eq(schema.variants.id, a!.id));
+    await run();
+    await db.update(schema.variants).set({ barcode: null }).where(eq(schema.variants.id, a!.id));
+    await db.update(schema.variants).set({ barcode: "MOVE" }).where(eq(schema.variants.id, b!.id));
+    let before = fake.posts.length;
+    await run();
+    expect(fake.posts.slice(before).flatMap((p) => p.items)).toEqual([{ barcode: "MOVE", quantity: 7 }]);
+    await db.update(schema.variants).set({ barcode: null }).where(eq(schema.variants.id, b!.id));
+    before = fake.posts.length;
+    await run();
+    expect(fake.posts.slice(before).flatMap((p) => p.items)).toEqual([{ barcode: "MOVE", quantity: 0 }]);
+  });
+
+  test("Trendyol'da satıştan kalkan ürünün karşılaştırma fiyatı kaldırılır", async () => {
+    const { product, variants } = await makeProduct({ price: 100000, sizes: [{ size: "40", stock: 1 }] });
+    await db.update(schema.variants).set({ barcode: "SALE-40" }).where(eq(schema.variants.id, variants[0]!.id));
+    fake.prices.set("SALE-40", 1500);
+    await run();
+    const priceOf = async () => (await db.select().from(schema.products).where(eq(schema.products.id, product.id)))[0]!.trendyolPrice;
+    expect(await priceOf()).toBe(150000);
+    fake.prices.delete("SALE-40");
+    await run(61 * 60_000);
+    expect(await priceOf()).toBeNull();
+  });
 });
