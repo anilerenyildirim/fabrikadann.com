@@ -356,6 +356,8 @@ export const trendyolPackages = pgTable(
     orderNumber: text("order_number").notNull(),
     status: text("status").notNull(),
     lines: jsonb("lines").$type<TrendyolLine[]>().notNull(),
+    // Senkron açılmadan önce verilmiş siparişler stoktan düşülmez (stok zaten buna göre girilmiştir)
+    orderDate: timestamp("order_date", { withTimezone: true }),
     lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },

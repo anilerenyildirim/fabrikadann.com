@@ -16,6 +16,11 @@ export function trendyolProblems(s: TrendyolStatus, now = Date.now()): string[] 
   if (!lastRun) problems.push("Senkron henüz hiç çalışmadı. Zamanlanmış görevi kurun (npm run trendyol:sync).");
   else if (now - lastRun > STALE_MS) problems.push(`Senkron ${formatDateTime(new Date(lastRun))} tarihinden beri çalışmadı. Zamanlanmış görevi kontrol edin.`);
   if (s.state.lastError) problems.push(`Son çalıştırmada hata: ${s.state.lastError}`);
+  const summary = s.state.lastSummary;
+  if (summary?.windowClipped) {
+    problems.push("Senkron 13 günden uzun süre çalışmadı; aradaki Trendyol değişiklikleri alınamadı. Stokları depo sayımıyla kontrol edin.");
+  }
+  if (summary?.skippedPackages) problems.push(`Son çalıştırmada ${summary.skippedPackages} Trendyol paketi okunamadı ve işlenmedi.`);
   if (s.shortfalls.length) problems.push(`${s.shortfalls.length} Trendyol siparişi için stok yoktu (aynı çift iki kanalda satılmış olabilir).`);
   if (s.unmatched.length) problems.push(`${s.unmatched.length} Trendyol kalemi hiçbir numarayla eşleşmedi (barkod eksik).`);
   if (s.failedPushes.length) problems.push(`${s.failedPushes.length} numaranın stoğu Trendyol'a gönderilemedi.`);

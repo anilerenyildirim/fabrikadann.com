@@ -57,8 +57,9 @@ const packageSchema = z
     orderNumber: idSchema,
     status: z.string().nullish(),
     shipmentPackageStatus: z.string().nullish(),
+    orderDate: z.number().nullish(),
     lastModifiedDate: z.number().nullish(),
-    lines: z.array(lineSchema).default([]),
+    lines: z.array(lineSchema).nullish(),
   })
   .transform((p, ctx) => {
     const id = p.shipmentPackageId ?? p.id;
@@ -71,8 +72,9 @@ const packageSchema = z
       id,
       orderNumber: p.orderNumber,
       status,
+      orderDate: p.orderDate ? new Date(p.orderDate) : null,
       lastModifiedAt: p.lastModifiedDate ? new Date(p.lastModifiedDate) : null,
-      lines: p.lines
+      lines: (p.lines ?? [])
         .filter((l) => l.barcode)
         .map((l): TrendyolLine => ({ barcode: l.barcode!.trim(), quantity: l.quantity, status: l.orderLineItemStatusName ?? "" })),
     };
@@ -81,12 +83,13 @@ const packageSchema = z
 export type TrendyolPackage = z.output<typeof packageSchema>;
 
 const streamSchema = z.object({
-  content: z.array(z.unknown()).default([]),
-  hasMore: z.boolean().default(false),
+  content: z.array(z.unknown()).nullish().transform((c) => c ?? []),
+  hasMore: z.boolean().nullish().transform((h) => h ?? false),
   nextCursor: z.string().nullish(),
 });
 
 const batchSchema = z.object({
+  // İşlem sürerken liste boş ya da null gelebilir
   items: z
     .array(
       z.object({
@@ -95,8 +98,16 @@ const batchSchema = z.object({
         failureReasons: z.array(z.unknown()).nullish(),
       }),
     )
-    .default([]),
+    .nullish()
+    .transform((i) => i ?? []),
 });
+
+/** Beklenmeyen yanıt biçimi de TrendyolError olur: senkron onu yakalayıp kaydeder, çökmez. */
+function parseResponse<T extends z.ZodType>(schema: T, data: unknown, what: string): z.output<T> {
+  const parsed = schema.safeParse(data);
+  if (!parsed.success) throw new TrendyolError(`Trendyol ${what} yanıtı beklenen biçimde değil`);
+  return parsed.data;
+}
 
 export type BatchItemResult = { barcode: string; status: "SUCCESS" | "FAILED" | "IN_PROGRESS"; reasons: string[] };
 
@@ -149,7 +160,11 @@ export class TrendyolClient {
       size: String(input.size ?? 200),
     });
     if (input.cursor) q.set("nextCursor", input.cursor);
-    const raw = streamSchema.parse(await this.request("GET", `/integration/order/sellers/${this.cfg.sellerId}/orders/stream?${q}`));
+    const raw = parseResponse(
+      streamSchema,
+      await this.request("GET", `/integration/order/sellers/${this.cfg.sellerId}/orders/stream?${q}`),
+      "sipariş",
+    );
     const packages: TrendyolPackage[] = [];
     let skipped = 0;
     for (const item of raw.content) {
@@ -163,19 +178,22 @@ export class TrendyolClient {
   /** Stok güncelleme (fiyat gönderilmez). En fazla 1000 kalem; sonuç toplu işlem kimliğiyle sorgulanır. */
   async updateInventory(items: InventoryItem[]): Promise<string> {
     if (items.length === 0 || items.length > 1000) throw new TrendyolError("Bir istekte 1–1000 kalem gönderilebilir");
-    const res = z
-      .object({ batchRequestId: z.string().min(1) })
-      .safeParse(await this.request("POST", `/integration/inventory/sellers/${this.cfg.sellerId}/products/price-and-inventory`, { items }));
-    if (!res.success) throw new TrendyolError("Trendyol toplu işlem kimliği dönmedi");
-    return res.data.batchRequestId;
+    const res = parseResponse(
+      z.object({ batchRequestId: z.string().min(1).max(200) }),
+      await this.request("POST", `/integration/inventory/sellers/${this.cfg.sellerId}/products/price-and-inventory`, { items }),
+      "stok güncelleme",
+    );
+    return res.batchRequestId;
   }
 
   async batchResult(batchRequestId: string): Promise<BatchItemResult[]> {
-    const raw = batchSchema.parse(
+    const raw = parseResponse(
+      batchSchema,
       await this.request(
         "GET",
         `/integration/product/sellers/${this.cfg.sellerId}/products/batch-requests/${encodeURIComponent(batchRequestId)}`,
       ),
+      "toplu işlem sonucu",
     );
     return raw.items
       .filter((i) => i.requestItem?.barcode)

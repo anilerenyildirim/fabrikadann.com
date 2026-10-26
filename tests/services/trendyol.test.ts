@@ -2,14 +2,23 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { getSyncState, getTrendyolStatus, runTrendyolSync } from "@/server/services/trendyol";
+import { deleteVariant } from "@/server/services/admin/catalog";
+import { AdminError } from "@/server/services/admin/context";
 import { reservedByVariant, returnStock } from "@/server/services/stock";
 import { TrendyolClient, TrendyolError, trendyolConfig } from "@/server/trendyol/client";
-import { makeProduct, resetDb } from "../helpers/db";
+import { makeProduct, makeUser, resetDb } from "../helpers/db";
 
 beforeEach(resetDb);
 
 type RawLine = { barcode: string; quantity: number; orderLineItemStatusName?: string };
-type RawPackage = { id: number; orderNumber: string; status: string; lastModifiedDate?: number; lines: RawLine[] };
+type RawPackage = {
+  id: number;
+  orderNumber: string;
+  status: string;
+  orderDate?: number;
+  lastModifiedDate?: number;
+  lines: RawLine[];
+};
 
 /** Trendyol API'sinin bellekteki taklidi: gerçek istemci bu fetch ile konuşur. */
 class FakeTrendyol {
@@ -18,6 +27,7 @@ class FakeTrendyol {
   batchItems = new Map<string, { barcode: string; status: string; reasons?: string[] }[]>();
   requests: { url: string; init: RequestInit }[] = [];
   failStream = false;
+  batchBody: unknown = null;
   pageSize = 200;
 
   fetch = async (url: string, init: RequestInit): Promise<Response> => {
@@ -42,6 +52,7 @@ class FakeTrendyol {
     }
     const batch = u.pathname.match(/batch-requests\/(.+)$/);
     if (batch) {
+      if (this.batchBody !== null) return Response.json(this.batchBody);
       const items = this.batchItems.get(decodeURIComponent(batch[1]!)) ?? [];
       return Response.json({
         items: items.map((i) => ({ requestItem: { barcode: i.barcode }, status: i.status, failureReasons: i.reasons ?? [] })),
@@ -232,7 +243,7 @@ describe("senkron", () => {
     expect(await stockOf(id)).toBe(5);
   });
 
-  test("yalnızca değişen stok gönderilir; 20.000 üstü sınırlanır; başarısız gönderim bir saat sonra yinelenir", async () => {
+  test("yalnızca değişen stok gönderilir; 20.000 üstü sınırlanır; reddedilen gönderim 15 dakika sonra yinelenir", async () => {
     const a = await variantWithBarcode(25000, "A1");
     await variantWithBarcode(3, "B1");
     await run();
@@ -258,7 +269,7 @@ describe("senkron", () => {
     // A1 için 20.000 zaten gönderilmişti; sınır nedeniyle değişiklik sayılmaz
     expect(fake.posts).toHaveLength(1);
 
-    await run(61 * 60_000);
+    await run(17 * 60_000);
     expect(fake.posts[1]).toEqual({ items: [{ barcode: "B1", quantity: 3 }] });
   });
 
@@ -308,5 +319,59 @@ describe("senkron", () => {
     expect(await stockOf(id)).toBe(2);
     expect((await reservedByVariant(db, [id])).get(id)).toBe(2);
     expect((await reservedByVariant(db)).get(id)).toBe(2);
+  });
+
+  test("senkron açılmadan önce verilmiş sipariş sonradan görülünce (ör. iade) stoğu düşürmez", async () => {
+    const id = await variantWithBarcode(5);
+    await run();
+    const old = pkg("ESKI", "Returned", [{ barcode: "8680000000001", quantity: 1 }], 70);
+    old.orderDate = clock - 40 * 24 * 3600_000;
+    // Senkron açıldıktan sonra verilmiş ama "teslim edildi" olarak ilk kez görülen sipariş düşülür
+    const fresh = pkg("YENI", "Delivered", [{ barcode: "8680000000001", quantity: 1 }], 71);
+    fresh.orderDate = clock + 60_000;
+    fake.packages = [old, fresh];
+    await run();
+    expect(await stockOf(id)).toBe(4);
+  });
+
+  test("senkron öncesi verilmiş, kargolanmamış sipariş iptal edilirse ürün stoğa döner", async () => {
+    const id = await variantWithBarcode(5);
+    await run();
+    const old = pkg("ONCE", "Created", [{ barcode: "8680000000001", quantity: 1 }], 75);
+    old.orderDate = clock - 20 * 24 * 3600_000;
+    fake.packages = [old];
+    await run();
+    expect(await stockOf(id)).toBe(5);
+    fake.packages = [{ ...old, status: "Cancelled", lastModifiedDate: clock + 1 }];
+    await run();
+    expect(await stockOf(id)).toBe(6);
+  });
+
+  test("beklenmeyen toplu işlem yanıtı senkronu durdurmaz; stok gönderimi sürer", async () => {
+    const id = await variantWithBarcode(5);
+    await run();
+    fake.batchBody = { items: null, batchRequestId: "x" };
+    await db.update(schema.variants).set({ stock: 4 }).where(eq(schema.variants.id, id));
+    await run();
+    expect(fake.posts.at(-1)).toEqual({ items: [{ barcode: "8680000000001", quantity: 4 }] });
+    fake.batchBody = "biçimsiz";
+    await expect(run()).resolves.toBeTruthy();
+    expect((await getTrendyolStatus()).pendingPushes).toBe(1);
+    // Trendyol sonucu 4 saat saklar; sonra gönderim başarısız sayılır ve aynı çalıştırmada yeniden gönderilir
+    const sent = fake.posts.length;
+    await run(5 * 3600_000);
+    expect(fake.posts).toHaveLength(sent + 1);
+  });
+
+  test("Trendyol siparişi olan numara silinemez", async () => {
+    const admin = await makeUser({ role: "admin" });
+    const ctx = { actorId: admin.id, ip: "10.0.0.1" };
+    const { variants } = await makeProduct({ status: "draft", sizes: [{ size: "40", stock: 5 }, { size: "41", stock: 5 }] });
+    await db.update(schema.variants).set({ barcode: "S-40" }).where(eq(schema.variants.id, variants[0]!.id));
+    await run();
+    fake.packages = [pkg("S1", "Created", [{ barcode: "S-40", quantity: 1 }], 80)];
+    await run();
+    await expect(deleteVariant(variants[0]!.id, ctx)).rejects.toBeInstanceOf(AdminError);
+    await deleteVariant(variants[1]!.id, ctx);
   });
 });

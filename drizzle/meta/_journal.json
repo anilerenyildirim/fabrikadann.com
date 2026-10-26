@@ -36,6 +36,13 @@
       "when": 1793048553012,
       "tag": "0004_trendyol_stok",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793049320353,
+      "tag": "0005_trendyol_siparis_tarihi",
+      "breakpoints": true
     }
   ]
 }

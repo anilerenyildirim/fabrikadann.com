@@ -27,7 +27,8 @@ const MAX_PAGES = 50;
 const PAGE_PAUSE_MS = 5000;
 const MAX_QUANTITY = 20000;
 const PUSH_CHUNK = 1000;
-const RETRY_FAILED_MS = HOUR;
+// Trendyol aynı isteği 15 dakika içinde tekrar kabul etmez; reddedilen gönderim bu süreden sonra yinelenir
+const RETRY_FAILED_MS = 16 * 60_000;
 // Trendyol toplu işlem sonucunu 4 saat saklar
 const BATCH_TTL_MS = 4 * HOUR;
 const BATCH_MIN_AGE_MS = 20_000;
@@ -37,6 +38,8 @@ const STATE_KEY = "trendyol.sync";
 export type SyncState = {
   /** Son başarılı çekimin başladığı an (Unix ms); yoksa ilk çalıştırma (başlangıç kaydı) */
   cursor?: number;
+  /** İlk çalıştırmanın anı: bundan önce verilmiş siparişler stoktan düşülmez (stok zaten buna göre girilmişti) */
+  baselineAt?: number;
   lastRunAt?: string;
   lastSuccessAt?: string;
   lastError?: string | null;
@@ -47,6 +50,8 @@ export type SyncSummary = {
   baseline: boolean;
   packages: number;
   skippedPackages: number;
+  /** Senkron 13 günden uzun çalışmadı; aradaki değişiklikler alınamadı */
+  windowClipped: boolean;
   orders: number;
   deducted: number;
   returned: number;
@@ -106,6 +111,7 @@ async function runLocked(deps: SyncDeps): Promise<SyncSummary> {
     const summary: SyncSummary = { ...pulled, ...push, batchesChecked };
     await saveSyncState({
       cursor: now.getTime(),
+      baselineAt: state.baselineAt ?? (pulled.baseline ? now.getTime() : undefined),
       lastRunAt: runAt,
       lastSuccessAt: push.pushErrors.length ? state.lastSuccessAt : runAt,
       lastError: push.pushErrors.length ? `Stok gönderimi: ${push.pushErrors[0]}` : null,
@@ -127,6 +133,9 @@ async function pullOrders(deps: SyncDeps, state: SyncState, now: Date) {
   const baseline = state.cursor === undefined;
   const floor = now.getTime() - MAX_LOOKBACK_MS;
   const start = baseline ? floor : Math.max(state.cursor! - OVERLAP_MS, floor);
+  const windowClipped = !baseline && state.cursor! - OVERLAP_MS < floor;
+  // İlk çalıştırmada bu an kaydedilir; sonraki çalıştırmalarda kayıtlı değer kullanılır
+  const baselineAt = state.baselineAt ?? (baseline ? now.getTime() : undefined);
   const end = now.getTime() + FUTURE_MS;
 
   const seen = new Map<string, TrendyolPackage>();
@@ -147,11 +156,15 @@ async function pullOrders(deps: SyncDeps, state: SyncState, now: Date) {
   for (const p of seen.values()) {
     if (await savePackage(p)) orderNumbers.add(p.orderNumber);
   }
-  // Eşleşmeyen barkodlar (sonradan bir numaraya yazılmış olabilir) ve stok yetmeyen kalemler yeniden denenir
+  // Stok yetmeyen kalemler ve barkodu sonradan bir numaraya yazılmış eşleşmeyen kalemler yeniden denenir
   const open = await db
-    .selectDistinct({ orderNumber: trendyolOrderStock.orderNumber })
+    .select({ orderNumber: trendyolOrderStock.orderNumber })
     .from(trendyolOrderStock)
-    .where(sql`${trendyolOrderStock.quantity} > ${trendyolOrderStock.deducted}`)
+    .where(
+      sql`${trendyolOrderStock.quantity} > ${trendyolOrderStock.deducted} and (${trendyolOrderStock.variantId} is not null
+        or exists (select 1 from ${variants} where ${variants.barcode} = ${trendyolOrderStock.barcode}))`,
+    )
+    .orderBy(asc(trendyolOrderStock.updatedAt))
     .limit(500);
   for (const u of open) orderNumbers.add(u.orderNumber);
 
@@ -159,23 +172,36 @@ async function pullOrders(deps: SyncDeps, state: SyncState, now: Date) {
   let returned = 0;
   let shortfall = 0;
   for (const orderNumber of orderNumbers) {
-    const r = await applyOrder(orderNumber, baseline);
+    const r = await applyOrder(orderNumber, baselineAt, baseline);
     deducted += r.deducted;
     returned += r.returned;
     shortfall += r.shortfall;
   }
-  return { baseline, packages: seen.size, skippedPackages, orders: orderNumbers.size, deducted, returned, shortfall };
+  return { baseline, packages: seen.size, skippedPackages, windowClipped, orders: orderNumbers.size, deducted, returned, shortfall };
 }
 
 /** Paketi kaydeder; kayıtlı olan daha yeniyse dokunmaz. Değiştiyse true. */
 async function savePackage(p: TrendyolPackage): Promise<boolean> {
-  const values = { id: p.id, orderNumber: p.orderNumber, status: p.status, lines: p.lines, lastModifiedAt: p.lastModifiedAt };
+  const values = {
+    id: p.id,
+    orderNumber: p.orderNumber,
+    status: p.status,
+    lines: p.lines,
+    orderDate: p.orderDate,
+    lastModifiedAt: p.lastModifiedAt,
+  };
   const rows = await db
     .insert(trendyolPackages)
     .values(values)
     .onConflictDoUpdate({
       target: trendyolPackages.id,
-      set: { orderNumber: values.orderNumber, status: values.status, lines: values.lines, lastModifiedAt: values.lastModifiedAt },
+      set: {
+        orderNumber: values.orderNumber,
+        status: values.status,
+        lines: values.lines,
+        orderDate: sql`coalesce(excluded.order_date, ${trendyolPackages.orderDate})`,
+        lastModifiedAt: values.lastModifiedAt,
+      },
       setWhere: sql`${trendyolPackages.lastModifiedAt} is null or excluded.last_modified_at is null
         or excluded.last_modified_at >= ${trendyolPackages.lastModifiedAt}`,
     })
@@ -198,33 +224,43 @@ function wantedByBarcode(packages: { status: string; lines: schema.TrendyolLine[
 
 /**
  * Bir Trendyol siparişinin stok etkisini paketlerle eşitler.
- * baseline: ilk çalıştırmada eski siparişler stok değiştirmeden "zaten düşülmüş" kabul edilir
- * (senkron açılmadan önce site stoğu Trendyol'daki stokla eşitlenmiş olmalı).
+ * Senkron açılmadan önce verilmiş (sipariş tarihi baselineAt'ten eski) siparişler ilk görüldüklerinde stok
+ * değiştirilmeden "zaten düşülmüş" kabul edilir: senkron açılırken site stoğu bunlara göre girilmiştir.
+ * Böylece eski bir siparişin sonradan gelen iade/teslim güncellemesi stoğu düşürmez.
  */
-async function applyOrder(orderNumber: string, baseline: boolean) {
+async function applyOrder(orderNumber: string, baselineAt: number | undefined, baselineRun: boolean) {
   return db.transaction(async (tx) => {
     const result = { deducted: 0, returned: 0, shortfall: 0 };
     const packages = await tx
-      .select({ status: trendyolPackages.status, lines: trendyolPackages.lines })
+      .select({ status: trendyolPackages.status, lines: trendyolPackages.lines, orderDate: trendyolPackages.orderDate })
       .from(trendyolPackages)
       .where(eq(trendyolPackages.orderNumber, orderNumber));
     const wanted = wantedByBarcode(packages);
+    const dates = packages.map((p) => p.orderDate?.getTime()).filter((d): d is number => d !== undefined);
+    const orderedAt = dates.length ? Math.min(...dates) : undefined;
+    // Sipariş tarihi gelmediyse yalnızca ilk çalıştırmada eski sayılır
+    const preexisting = orderedAt !== undefined && baselineAt !== undefined ? orderedAt < baselineAt : baselineRun;
     const existing = await tx
       .select()
       .from(trendyolOrderStock)
       .where(eq(trendyolOrderStock.orderNumber, orderNumber))
       .for("update");
     const rows = new Map(existing.map((r) => [r.barcode, r]));
-    const barcodes = new Set([...wanted.keys(), ...rows.keys()]);
 
-    for (const barcode of barcodes) {
+    // Numaralar, ödeme akışıyla aynı sırada (kimliğe göre) kilitlensin: eşzamanlı siparişle kilitlenme olmasın
+    const entries = [];
+    for (const barcode of new Set([...wanted.keys(), ...rows.keys()])) {
       const want = wanted.get(barcode) ?? 0;
       const row = rows.get(barcode);
       if (!row && want === 0) continue;
-      const variantId = row?.variantId ?? (await matchVariant(tx, barcode));
+      entries.push({ barcode, want, row, variantId: row?.variantId ?? (await matchVariant(tx, barcode)) });
+    }
+    entries.sort((x, y) => (x.variantId ?? "~").localeCompare(y.variantId ?? "~"));
+
+    for (const { barcode, want, row, variantId } of entries) {
       let deducted = row?.deducted ?? 0;
       const reference = `Trendyol ${orderNumber}`;
-      if (baseline && !row) {
+      if (!row && preexisting) {
         deducted = want;
       } else if (variantId && want > deducted) {
         // Stok yetmezse kalan adet eksik olarak durur; stok geldiğinde (ör. site siparişi iptal) sonraki çalıştırmada düşülür

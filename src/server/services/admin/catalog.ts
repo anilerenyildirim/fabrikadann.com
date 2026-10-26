@@ -548,7 +548,12 @@ async function orderedVariantIds(variantIds: string[], tx: DbOrTx): Promise<Set<
     .selectDistinct({ id: orderItems.variantId })
     .from(orderItems)
     .where(inArray(orderItems.variantId, variantIds));
-  return new Set(rows.map((r) => r.id).filter((x): x is string => x !== null));
+  // Trendyol siparişleri de sayılır: silinirse iptal edilen Trendyol siparişinin stoğu geri konamaz
+  const trendyolRows = await tx
+    .selectDistinct({ id: schema.trendyolOrderStock.variantId })
+    .from(schema.trendyolOrderStock)
+    .where(inArray(schema.trendyolOrderStock.variantId, variantIds));
+  return new Set([...rows, ...trendyolRows].map((r) => r.id).filter((x): x is string => x !== null));
 }
 
 /** Sipariş geçmişinde küçük resim olarak kullanılan görsel dosyaları silinmez. */

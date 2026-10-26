@@ -1,0 +1,1 @@
+ALTER TABLE "trendyol_packages" ADD COLUMN "order_date" timestamp with time zone;

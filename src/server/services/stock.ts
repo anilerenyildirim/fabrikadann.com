@@ -85,7 +85,7 @@ export async function reservedByVariant(tx: DbOrTx, variantIds?: string[]): Prom
 }
 
 // Henüz kargoya verilmemiş Trendyol paketleri: ürün depoda ama satılmış
-const TRENDYOL_UNSHIPPED = ["Awaiting", "Created", "Picking", "Invoiced", "Repack"];
+const TRENDYOL_UNSHIPPED = ["Awaiting", "Verified", "Created", "Picking", "Invoiced", "Repack"];
 
 /** Kargolanmamış Trendyol siparişleri için stoktan düşülmüş adet (numara başına). */
 export async function trendyolReservedByVariant(tx: DbOrTx, variantIds?: string[]): Promise<Map<string, number>> {

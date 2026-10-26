@@ -108,8 +108,9 @@ Kurulum:
 1. Satıcı panelinde Hesap Bilgilerim → Entegrasyon Bilgileri'nden Satıcı ID, API Key ve API Secret'ı alıp
    `.env.production`'a yazın (bkz. §3), uygulamayı yeniden başlatın.
 2. **Açmadan önce** panelde her numaranın barkodunu girin ve sitedeki stoğu doğru yapın: satılabilir stok =
-   depodaki adet − iki kanalda henüz kargolanmamış siparişler. İlk çalıştırma son 13 günün Trendyol paketlerini
-   stok değiştirmeden "zaten düşülmüş" kabul eder ve sitedeki stoğu Trendyol'a gönderir (Trendyol'daki stok
+   depodaki adet − iki kanalda henüz kargolanmamış siparişler. Senkronun ilk çalıştığı andan önce verilmiş Trendyol
+   siparişleri stok değiştirmeden "zaten düşülmüş" kabul edilir (sonradan iptal edilirlerse adet stoğa döner);
+   ilk çalıştırma sitedeki stoğu Trendyol'a gönderir (Trendyol'daki stok
    sitedekiyle değişir). Emin değilseniz ilk çalıştırmadan sonra Stok sayfasında "Depo sayımı" ile sayılan
    adedi girin; iki kanalın kargolanmamış siparişleri otomatik düşülür.
 3. Zamanlanmış görev (2 dakikada bir; iki kanalda aynı çiftin satılma penceresi bu süre kadardır):
