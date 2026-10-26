@@ -22,7 +22,7 @@ import {
 import { requireAdmin } from "@/server/auth/current";
 import { listStockMovements, listStockRows, STOCK_REASON_LABELS, type StockFilter } from "@/server/services/admin/stock";
 import { getTrendyolStatus } from "@/server/services/trendyol";
-import { adjustStockAction, bulkStockAction } from "./actions";
+import { adjustStockAction, bulkStockAction, trendyolSyncNowAction } from "./actions";
 
 export const metadata: Metadata = { title: "Stok" };
 
@@ -134,7 +134,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
             </div>
           </details>
         </Section>
-        <TrendyolPanel status={trendyol} />
+        <TrendyolPanel status={trendyol} syncAction={trendyolSyncNowAction} />
       </div>
 
       <div>

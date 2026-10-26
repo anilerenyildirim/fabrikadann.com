@@ -5,6 +5,10 @@ import { z } from "zod";
 import type { FormState } from "@/lib/form";
 import { adjustVariantStock, type StockAdjustResult } from "@/server/services/admin/catalog";
 import { bulkUpdateVariants, type BulkResult } from "@/server/services/admin/bulk-stock";
+import { audit } from "@/server/services/audit";
+import { runTrendyolSync } from "@/server/services/trendyol";
+import { rateLimit } from "@/server/auth/rate-limit";
+import { TrendyolClient, TrendyolError, trendyolConfig } from "@/server/trendyol/client";
 import { adminContext, errorState, parseForm } from "../../_lib/action";
 
 const adjustForm = z.object({
@@ -83,4 +87,32 @@ export async function bulkStockAction(_prev: BulkState, form: FormData): Promise
     };
   }
   return { values: parsed.values, result };
+}
+
+/** Trendyol senkronunu hemen çalıştırır (zamanlanmış görevi beklemeden; ör. test ortamında denerken). */
+export async function trendyolSyncNowAction(_prev: FormState, _form: FormData): Promise<FormState> {
+  const ctx = await adminContext();
+  const limited = await rateLimit(`trendyol-elle:${ctx.actorId}`, 3, 60);
+  if (!limited.ok) return { error: `Çok sık çalıştırıldı. ${limited.retryAfter} saniye sonra yeniden deneyin.` };
+  let cfg;
+  try {
+    cfg = trendyolConfig();
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Trendyol ayarları hatalı." };
+  }
+  if (!cfg) return { error: "Trendyol bağlantısı tanımlı değil." };
+  let summary;
+  try {
+    summary = await runTrendyolSync({ client: new TrendyolClient(cfg) });
+  } catch (e) {
+    if (e instanceof TrendyolError) return { error: `Senkron tamamlanamadı: ${e.message}` };
+    return errorState(e, undefined, "trendyol-elle");
+  }
+  if (!summary) return { error: "Senkron şu an zaten çalışıyor; biraz sonra sayfayı yenileyin." };
+  await audit({ action: "trendyol.sync_manual", actorId: ctx.actorId, data: { ...summary }, ip: ctx.ip });
+  revalidatePath("/", "layout");
+  return {
+    ok: true,
+    message: `Senkron tamamlandı: ${summary.packages} paket, ${summary.deducted} adet düşüldü, ${summary.returned} adet geri kondu, ${summary.pushed} numara gönderildi.`,
+  };
 }

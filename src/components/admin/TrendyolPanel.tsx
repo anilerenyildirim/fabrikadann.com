@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ErrorMark } from "@/components/ui/form";
 import { formatPrice } from "@/lib/money";
 import type { TrendyolStatus } from "@/server/services/trendyol";
+import { ActionButton, type FormAction } from "./forms";
 import { formatDateTime, Section } from "./ui";
 
 // Zamanlanmış görev bu süredir çalışmadıysa uyarı
@@ -50,7 +51,7 @@ function List({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export function TrendyolPanel({ status: s }: { status: TrendyolStatus }) {
+export function TrendyolPanel({ status: s, syncAction }: { status: TrendyolStatus; syncAction?: FormAction }) {
   const problems = trendyolProblems(s);
   if (!s.configured && !s.configError) {
     return (
@@ -67,6 +68,11 @@ export function TrendyolPanel({ status: s }: { status: TrendyolStatus }) {
     <Section
       id="trendyol"
       title="Trendyol senkronu"
+      actions={
+        syncAction && s.configured ? (
+          <ActionButton action={syncAction} fields={{}} label="Şimdi senkronize et" pendingLabel="Çalışıyor…" />
+        ) : undefined
+      }
       description={
         <>
           Barkodu olan numaralar Trendyol ile eşleşir. Son başarılı çalıştırma:{" "}
