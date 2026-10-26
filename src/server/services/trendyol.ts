@@ -445,6 +445,8 @@ async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
   const prices = new Map<string, number>();
   try {
     for (let i = 0; i < barcodes.length; i += 50) {
+      // Trendyol aynı uca 10 saniyede en fazla 50 istek kabul eder
+      if (i > 0) await (deps.pause ?? sleep)(250);
       for (const [b, p] of await deps.client.salePrices(barcodes.slice(i, i + 50))) prices.set(b, p);
     }
   } catch (e) {
