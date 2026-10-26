@@ -96,7 +96,7 @@ export function ProductInfoForm({
           placeholder="1.499,90"
           defaultValue={v("trendyolPrice")}
           error={e.trendyolPrice}
-          hint="Girilirse ürün sayfasında iki kanalın fiyatı bilgi olarak gösterilir."
+          hint="Girilirse ürün sayfasında iki kanalın fiyatı bilgi olarak gösterilir. Trendyol senkronu açıksa barkodlardan saatte bir otomatik güncellenir."
           className="[&_input]:[font-variant-numeric:tabular-nums]"
         />
       </div>

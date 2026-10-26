@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm"
 import { db, pool, schema, type Tx } from "@/server/db";
 import { describeError } from "@/server/log";
 import { TrendyolError, trendyolConfig, type TrendyolClient, type TrendyolPackage } from "@/server/trendyol/client";
+import { audit } from "./audit";
 import { returnStock } from "./stock";
 
 /**
@@ -34,6 +35,8 @@ const BATCH_TTL_MS = 4 * HOUR;
 const BATCH_MIN_AGE_MS = 20_000;
 
 const STATE_KEY = "trendyol.sync";
+// Karşılaştırma fiyatı (vitrinde "Trendyol'da X TL") saatte bir yenilenir
+const PRICE_SYNC_MS = HOUR;
 
 export type SyncState = {
   /** Son başarılı çekimin başladığı an (Unix ms); yoksa ilk çalıştırma (başlangıç kaydı) */
@@ -44,7 +47,12 @@ export type SyncState = {
   lastSuccessAt?: string;
   lastError?: string | null;
   lastSummary?: SyncSummary;
+  lastPriceSyncAt?: number;
+  /** Trendyol'da sitedekinden ucuz ya da aynı fiyata satılan ürünler (vitrinde karşılaştırma gösterilmez) */
+  priceWarnings?: PriceWarning[];
 };
+
+export type PriceWarning = { productId: string; name: string; price: number; trendyolPrice: number };
 
 export type SyncSummary = {
   baseline: boolean;
@@ -59,6 +67,9 @@ export type SyncSummary = {
   pushed: number;
   pushErrors: string[];
   batchesChecked: number;
+  /** Güncellenen Trendyol karşılaştırma fiyatı sayısı (fiyat bu çalıştırmada okunmadıysa null) */
+  pricesUpdated: number | null;
+  priceError?: string;
 };
 
 export type SyncDeps = {
@@ -108,8 +119,11 @@ async function runLocked(deps: SyncDeps): Promise<SyncSummary> {
     const pulled = await pullOrders(deps, state, now);
     const batchesChecked = await checkPushResults(deps, now);
     const push = await pushStock(deps, now);
-    const summary: SyncSummary = { ...pulled, ...push, batchesChecked };
+    const prices = await syncPricesIfDue(deps, state, now);
+    const summary: SyncSummary = { ...pulled, ...push, batchesChecked, pricesUpdated: prices.updated, priceError: prices.error };
     await saveSyncState({
+      lastPriceSyncAt: prices.ranAt ?? state.lastPriceSyncAt,
+      priceWarnings: prices.warnings ?? state.priceWarnings,
       cursor: now.getTime(),
       baselineAt: state.baselineAt ?? (pulled.baseline ? now.getTime() : undefined),
       lastRunAt: runAt,
@@ -407,6 +421,60 @@ async function checkPushResults(deps: SyncDeps, now: Date): Promise<number> {
     }
   }
   return checked;
+}
+
+// ---------- 3. Trendyol satış fiyatı → vitrindeki karşılaştırma ----------
+
+/**
+ * Barkodu olan ürünlerin Trendyol satış fiyatını okur; ürünün Trendyol fiyatı, satıştaki barkodlarının en
+ * düşüğüdür. Trendyol fiyatı sitedekinden yüksek değilse karşılaştırma kaldırılır (yanıltıcı olmasın) ve
+ * panelde uyarı gösterilir. Okunamayan ürünlerde elle girilen değer kalır. Hata stok senkronunu durdurmaz.
+ */
+async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
+  if (state.lastPriceSyncAt && now.getTime() - state.lastPriceSyncAt < PRICE_SYNC_MS) {
+    return { updated: null, ranAt: undefined, warnings: undefined, error: undefined };
+  }
+  const rows = await db
+    .select({ productId: products.id, name: products.name, price: products.price, trendyolPrice: products.trendyolPrice, barcode: variants.barcode })
+    .from(variants)
+    .innerJoin(productColors, eq(productColors.id, variants.colorId))
+    .innerJoin(products, eq(products.id, productColors.productId))
+    .where(and(isNotNull(variants.barcode), sql`${products.status} <> 'archived'`))
+    .limit(10_000);
+  const barcodes = [...new Set(rows.map((r) => r.barcode!))];
+  const prices = new Map<string, number>();
+  try {
+    for (let i = 0; i < barcodes.length; i += 50) {
+      for (const [b, p] of await deps.client.salePrices(barcodes.slice(i, i + 50))) prices.set(b, p);
+    }
+  } catch (e) {
+    if (!(e instanceof TrendyolError)) throw e;
+    return { updated: null, ranAt: undefined, warnings: undefined, error: e.message };
+  }
+
+  const byProduct = new Map<string, { name: string; price: number; current: number | null; min: number | null }>();
+  for (const r of rows) {
+    const entry = byProduct.get(r.productId) ?? { name: r.name, price: r.price, current: r.trendyolPrice, min: null };
+    const p = prices.get(r.barcode!);
+    if (p !== undefined && (entry.min === null || p < entry.min)) entry.min = p;
+    byProduct.set(r.productId, entry);
+  }
+
+  let updated = 0;
+  const warnings: PriceWarning[] = [];
+  for (const [productId, e] of byProduct) {
+    if (e.min === null) continue;
+    const next = e.min > e.price ? e.min : null;
+    if (next === null) warnings.push({ productId, name: e.name, price: e.price, trendyolPrice: e.min });
+    if (next === e.current) continue;
+    await db.transaction(async (tx) => {
+      await tx.update(products).set({ trendyolPrice: next }).where(eq(products.id, productId));
+      // Karşılaştırmalı fiyatın kaynağı kayıtlı kalsın
+      await audit({ action: "product.trendyol_price", target: productId, data: { from: e.current, to: next, trendyolSalePrice: e.min } }, tx);
+    });
+    updated++;
+  }
+  return { updated, ranAt: now.getTime(), warnings: warnings.slice(0, 50), error: undefined };
 }
 
 // ---------- Yönetim paneli ----------

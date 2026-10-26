@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ErrorMark } from "@/components/ui/form";
+import { formatPrice } from "@/lib/money";
 import type { TrendyolStatus } from "@/server/services/trendyol";
 import { formatDateTime, Section } from "./ui";
 
@@ -21,6 +22,10 @@ export function trendyolProblems(s: TrendyolStatus, now = Date.now()): string[] 
     problems.push("Senkron 13 günden uzun süre çalışmadı; aradaki Trendyol değişiklikleri alınamadı. Stokları depo sayımıyla kontrol edin.");
   }
   if (summary?.skippedPackages) problems.push(`Son çalıştırmada ${summary.skippedPackages} Trendyol paketi okunamadı ve işlenmedi.`);
+  if (summary?.priceError) problems.push(`Trendyol fiyatları okunamadı: ${summary.priceError}`);
+  if (s.state.priceWarnings?.length) {
+    problems.push(`${s.state.priceWarnings.length} ürün Trendyol'da sitedekinden ucuz ya da aynı fiyatta; vitrinde karşılaştırma gösterilmiyor.`);
+  }
   if (s.shortfalls.length) problems.push(`${s.shortfalls.length} Trendyol siparişi için stok yoktu (aynı çift iki kanalda satılmış olabilir).`);
   if (s.unmatched.length) problems.push(`${s.unmatched.length} Trendyol kalemi hiçbir numarayla eşleşmedi (barkod eksik).`);
   if (s.failedPushes.length) problems.push(`${s.failedPushes.length} numaranın stoğu Trendyol'a gönderilemedi.`);
@@ -103,6 +108,23 @@ export function TrendyolPanel({ status: s }: { status: TrendyolStatus }) {
               <p className="text-graphite">
                 Siparişlerden birini iptal edin ya da stok ekleyin; stok gelince eksik adet otomatik düşülür.
               </p>
+            </li>
+          ))}
+        </List>
+      )}
+
+      {!!s.state.priceWarnings?.length && (
+        <List title="Trendyol'da daha ucuz ya da aynı fiyatta">
+          {s.state.priceWarnings.map((w) => (
+            <li key={w.productId} className="py-2.5">
+              <div className="flex flex-wrap items-center gap-x-2">
+                <Link href={`/yonetim/urunler/${w.productId}`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+                  {w.name}
+                </Link>
+                <span className="tabular text-graphite">
+                  site {formatPrice(w.price)} · Trendyol {formatPrice(w.trendyolPrice)}
+                </span>
+              </div>
             </li>
           ))}
         </List>

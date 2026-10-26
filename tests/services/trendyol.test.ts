@@ -28,6 +28,8 @@ class FakeTrendyol {
   requests: { url: string; init: RequestInit }[] = [];
   failStream = false;
   batchBody: unknown = null;
+  prices = new Map<string, number>();
+  priceRequests: string[] = [];
   pageSize = 200;
 
   fetch = async (url: string, init: RequestInit): Promise<Response> => {
@@ -49,6 +51,12 @@ class FakeTrendyol {
         body.items.map((i: { barcode: string }) => ({ barcode: i.barcode, status: "SUCCESS" })),
       );
       return Response.json({ batchRequestId: id });
+    }
+    if (u.pathname.endsWith("/products/approved/inventory-and-price")) {
+      const asked = (u.searchParams.get("barcodes") ?? "").split(",");
+      this.priceRequests.push(u.search);
+      const variants = asked.filter((b) => this.prices.has(b)).map((b) => ({ barcode: b, salePrice: this.prices.get(b), quantity: 1 }));
+      return Response.json({ content: variants.length ? [{ contentId: 1, variants }] : [], page: 0, totalPages: 1 });
     }
     const batch = u.pathname.match(/batch-requests\/(.+)$/);
     if (batch) {
@@ -373,5 +381,29 @@ describe("senkron", () => {
     await run();
     await expect(deleteVariant(variants[0]!.id, ctx)).rejects.toBeInstanceOf(AdminError);
     await deleteVariant(variants[1]!.id, ctx);
+  });
+
+  test("Trendyol satış fiyatı karşılaştırma fiyatına yazılır; Trendyol ucuzsa karşılaştırma kalkar; saatte bir okunur", async () => {
+    const { product, variants } = await makeProduct({ price: 100000, sizes: [{ size: "40", stock: 1 }, { size: "41", stock: 1 }] });
+    await db.update(schema.variants).set({ barcode: "F-40" }).where(eq(schema.variants.id, variants[0]!.id));
+    await db.update(schema.variants).set({ barcode: "F-41" }).where(eq(schema.variants.id, variants[1]!.id));
+    fake.prices.set("F-40", 1299.9).set("F-41", 1249.5);
+    const productRow = async () => (await db.select().from(schema.products).where(eq(schema.products.id, product.id)))[0]!;
+
+    expect((await run())?.pricesUpdated).toBe(1);
+    expect((await productRow()).trendyolPrice).toBe(124950);
+    expect(fake.priceRequests[0]).toContain("status=onSale");
+    const [log] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "product.trendyol_price"));
+    expect(log!.data).toMatchObject({ from: null, to: 124950 });
+
+    // Bir saat dolmadan yeniden okunmaz
+    fake.prices.set("F-41", 900);
+    expect((await run())?.pricesUpdated).toBeNull();
+    expect((await productRow()).trendyolPrice).toBe(124950);
+
+    await run(61 * 60_000);
+    expect((await productRow()).trendyolPrice).toBeNull();
+    const status = await getTrendyolStatus();
+    expect(status.state.priceWarnings).toMatchObject([{ productId: product.id, price: 100000, trendyolPrice: 90000 }]);
   });
 });

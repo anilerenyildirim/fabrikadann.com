@@ -109,6 +109,19 @@ function parseResponse<T extends z.ZodType>(schema: T, data: unknown, what: stri
   return parsed.data;
 }
 
+const pricesSchema = z.object({
+  content: z
+    .array(
+      z.object({
+        variants: z
+          .array(z.object({ barcode: z.string().nullish(), salePrice: z.number().nonnegative().nullish() }))
+          .nullish(),
+      }),
+    )
+    .nullish()
+    .transform((c) => c ?? []),
+});
+
 export type BatchItemResult = { barcode: string; status: "SUCCESS" | "FAILED" | "IN_PROGRESS"; reasons: string[] };
 
 export type InventoryItem = { barcode: string; quantity: number };
@@ -184,6 +197,27 @@ export class TrendyolClient {
       "stok güncelleme",
     );
     return res.batchRequestId;
+  }
+
+  /**
+   * Satıştaki onaylı ürünlerin satış fiyatı (barkod → kuruş). En fazla 50 barkod.
+   * Satışta olmayan barkodlar sonuçta yer almaz.
+   */
+  async salePrices(barcodes: string[]): Promise<Map<string, number>> {
+    if (barcodes.length === 0 || barcodes.length > 50) throw new TrendyolError("Bir istekte 1–50 barkod sorgulanabilir");
+    const q = new URLSearchParams({ barcodes: barcodes.join(","), status: "onSale", page: "0", size: "100" });
+    const raw = parseResponse(
+      pricesSchema,
+      await this.request("GET", `/integration/product/sellers/${this.cfg.sellerId}/products/approved/inventory-and-price?${q}`),
+      "fiyat",
+    );
+    const prices = new Map<string, number>();
+    for (const item of raw.content) {
+      for (const v of item.variants ?? []) {
+        if (v.barcode && v.salePrice) prices.set(v.barcode, Math.round(v.salePrice * 100));
+      }
+    }
+    return prices;
   }
 
   async batchResult(batchRequestId: string): Promise<BatchItemResult[]> {
