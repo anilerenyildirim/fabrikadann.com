@@ -201,6 +201,8 @@ export const variants = pgTable(
   },
   (t) => [
     uniqueIndex("variants_sku_idx").on(t.sku),
+    // Trendyol eşleşmesi barkodla yapılır; aynı barkod iki numarada olamaz
+    uniqueIndex("variants_barcode_idx").on(t.barcode).where(sql`${t.barcode} is not null`),
     uniqueIndex("variants_color_size_idx").on(t.colorId, t.size),
     check("variants_stock_non_negative", sql`${t.stock} >= 0`),
   ],
@@ -341,6 +343,57 @@ export const payments = pgTable(
   },
   (t) => [uniqueIndex("payments_token_idx").on(t.token), index("payments_order_idx").on(t.orderId)],
 );
+
+// ---------- Trendyol ortak stok ----------
+
+export type TrendyolLine = { barcode: string; quantity: number; status: string };
+
+// Trendyol sipariş paketleri (yalnızca stok için gereken alanlar; müşteri bilgisi tutulmaz)
+export const trendyolPackages = pgTable(
+  "trendyol_packages",
+  {
+    id: text("id").primaryKey(),
+    orderNumber: text("order_number").notNull(),
+    status: text("status").notNull(),
+    lines: jsonb("lines").$type<TrendyolLine[]>().notNull(),
+    lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("trendyol_packages_order_idx").on(t.orderNumber)],
+);
+
+// Bir Trendyol siparişinin bir barkod için stoktan düştüğü adet. Paketler değiştikçe hedefe yaklaştırılır.
+export const trendyolOrderStock = pgTable(
+  "trendyol_order_stock",
+  {
+    orderNumber: text("order_number").notNull(),
+    barcode: text("barcode").notNull(),
+    variantId: uuid("variant_id").references(() => variants.id, { onDelete: "set null" }),
+    // Paketlere göre olması gereken adet
+    quantity: integer("quantity").notNull().default(0),
+    // Gerçekten stoktan düşülen adet
+    deducted: integer("deducted").notNull().default(0),
+    // Stok yetmediği için düşülemeyen adet (iki kanalda aynı çift satıldı)
+    shortfall: integer("shortfall").notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.orderNumber, t.barcode] }), index("trendyol_order_stock_variant_idx").on(t.variantId)],
+);
+
+export const trendyolPushStatus = pgEnum("trendyol_push_status", ["pending", "ok", "failed"]);
+
+// Trendyol'a en son gönderilen stok (numara başına)
+export const trendyolStockPush = pgTable("trendyol_stock_push", {
+  variantId: uuid("variant_id")
+    .primaryKey()
+    .references(() => variants.id, { onDelete: "cascade" }),
+  barcode: text("barcode").notNull(),
+  quantity: integer("quantity").notNull(),
+  batchRequestId: text("batch_request_id"),
+  status: trendyolPushStatus("status").notNull(),
+  error: text("error"),
+  pushedAt: timestamp("pushed_at", { withTimezone: true }).notNull(),
+});
 
 // ---------- Yönetim ----------
 

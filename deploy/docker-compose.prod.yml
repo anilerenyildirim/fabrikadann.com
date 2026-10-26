@@ -31,6 +31,11 @@ services:
       IYZICO_API_KEY: ${IYZICO_API_KEY:-}
       IYZICO_SECRET_KEY: ${IYZICO_SECRET_KEY:-}
       IYZICO_BASE_URL: ${IYZICO_BASE_URL:-}
+      # Trendyol ortak stok (boşsa kapalı; bkz. docs/CANLIYA-ALMA.md §5c)
+      TRENDYOL_SELLER_ID: ${TRENDYOL_SELLER_ID:-}
+      TRENDYOL_API_KEY: ${TRENDYOL_API_KEY:-}
+      TRENDYOL_API_SECRET: ${TRENDYOL_API_SECRET:-}
+      TRENDYOL_ENV: ${TRENDYOL_ENV:-prod}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-fabrikadann <siparis@fabrikadann.com>}
       # Uygulama kısıtlı rolle bağlanır

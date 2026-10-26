@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StockAdjustForm } from "@/components/admin/product/ProductForms";
+import { TrendyolPanel } from "@/components/admin/TrendyolPanel";
 import {
   Empty,
   FilterLinks,
@@ -19,6 +20,7 @@ import {
 } from "@/components/admin/ui";
 import { requireAdmin } from "@/server/auth/current";
 import { listStockMovements, listStockRows, STOCK_REASON_LABELS, type StockFilter } from "@/server/services/admin/stock";
+import { getTrendyolStatus } from "@/server/services/trendyol";
 import { adjustStockAction } from "./actions";
 
 export const metadata: Metadata = { title: "Stok" };
@@ -37,7 +39,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   const q = param(sp.q);
   const f = param(sp.filtre);
   const filter: StockFilter = f === "low" || f === "out" ? f : "all";
-  const [all, movements] = await Promise.all([listStockRows({ filter, q }), listStockMovements(50)]);
+  const [all, movements, trendyol] = await Promise.all([listStockRows({ filter, q }), listStockMovements(50), getTrendyolStatus()]);
   // Her satırda bir form var; sayfa telefonda hafif kalsın diye 50'şer satır
   const pageCount = Math.max(1, Math.ceil(all.length / STOCK_PAGE_SIZE));
   const page = Math.min(pageParam(sp.sayfa), pageCount);
@@ -48,7 +50,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Stok"
-        description={<>Satılabilir stok, ödeme bekleyen ve hazırlanan siparişler düşüldükten sonra kalan adettir; depoda sayım yaptıysanız “Depo sayımı” seçin, ayrılmış adetler otomatik düşülür. Stok Trendyol ile ortak; her düzeltme sebebiyle birlikte stok hareketlerine yazılır.</>}
+        description={<>Satılabilir stok, ödeme bekleyen ve hazırlanan siparişler düşüldükten sonra kalan adettir; depoda sayım yaptıysanız “Depo sayımı” seçin, ayrılmış adetler otomatik düşülür. Stok Trendyol ile ortak: Trendyol siparişleri buradan düşülür, Trendyol'da kargolanmamış olanlar da ayrılmış sayılır. Her değişiklik sebebiyle birlikte stok hareketlerine yazılır.</>}
       />
       <SearchForm action="/yonetim/stok" q={q} placeholder="Ürün adı, SKU ya da barkod" hidden={{ filtre: filter === "all" ? undefined : filter }} />
       <FilterLinks
@@ -111,7 +113,11 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       {all.length > 0 && <Pager page={page} pageCount={pageCount} total={all.length} unit="numara" hrefFor={href} />}
 
       <div className="mt-12">
-        <Section title="Son stok hareketleri" description="Sipariş, iptal/iade ve elle düzeltmeler; en yenisi üstte.">
+        <TrendyolPanel status={trendyol} />
+      </div>
+
+      <div>
+        <Section title="Son stok hareketleri" description="Sipariş, iptal/iade, Trendyol ve elle düzeltmeler; en yenisi üstte.">
           {movements.length === 0 ? (
             <Empty>Henüz stok hareketi yok.</Empty>
           ) : (
@@ -140,7 +146,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
                       <td className={`${td} tabular text-right`}>{m.delta > 0 ? `+${m.delta}` : m.delta}</td>
                       <td className={td}>{STOCK_REASON_LABELS[m.reason]}</td>
                       <td className={`${td} max-w-64 break-words text-graphite`}>{[m.note, m.reference].filter(Boolean).join(" · ") || "—"}</td>
-                      <td className={`${td} max-w-48 truncate text-graphite`}>{m.actorEmail ?? (m.reason === "order" ? "Müşteri" : "Sistem")}</td>
+                      <td className={`${td} max-w-48 truncate text-graphite`}>{m.actorEmail ?? (m.reason === "order" ? "Müşteri" : m.reason === "trendyol" ? "Trendyol" : "Sistem")}</td>
                     </tr>
                   ))}
                 </tbody>

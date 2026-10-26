@@ -898,7 +898,13 @@ export async function updateVariant(
   try {
     await db.update(variants).set({ sku, barcode }).where(eq(variants.id, vid));
   } catch (e) {
-    if (isUniqueViolation(e)) throw new AdminError(`"${sku}" SKU'su başka bir numarada kullanılıyor.`, "sku");
+    if (isUniqueViolation(e)) {
+      // Eşzamanlı kayıt: hangi benzersiz alanın çakıştığına bakılır
+      const constraint = (e as { cause?: { constraint?: string } }).cause?.constraint ?? (e as { constraint?: string }).constraint;
+      const barcodeTaken = barcode && constraint === "variants_barcode_idx";
+      if (barcodeTaken) throw new AdminError("Bu barkod başka bir numarada kullanılıyor.", "barcode");
+      throw new AdminError(`"${sku}" SKU'su başka bir numarada kullanılıyor.`, "sku");
+    }
     throw e;
   }
   await audit({

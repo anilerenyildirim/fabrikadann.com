@@ -5,7 +5,7 @@ export async function resetDb() {
   await db.execute(sql`
     TRUNCATE users, sessions, password_reset_tokens, email_verification_tokens, rate_limits, addresses, categories, products,
       product_colors, product_images, variants, stock_movements, carts, cart_items, orders,
-      order_items, payments, audit_log, settings
+      order_items, payments, audit_log, settings, trendyol_packages, trendyol_order_stock, trendyol_stock_push
     RESTART IDENTITY CASCADE
   `);
 }

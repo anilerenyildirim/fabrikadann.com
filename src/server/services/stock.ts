@@ -62,7 +62,7 @@ export class StaleStockError extends Error {
 }
 
 /**
- * Henüz kargolanmamış siparişlerde ayrılmış adetler (stok sipariş anında düşüldüğü için bunlar
+ * Henüz kargolanmamış siparişlerde (Trendyol dahil) ayrılmış adetler (stok sipariş anında düşüldüğü için bunlar
  * `stock` değerine dahil DEĞİL). Fiziksel sayım = stock + reserved.
  */
 export async function reservedByVariant(tx: DbOrTx, variantIds?: string[]): Promise<Map<string, number>> {
@@ -77,7 +77,33 @@ export async function reservedByVariant(tx: DbOrTx, variantIds?: string[]): Prom
       ),
     )
     .groupBy(schema.orderItems.variantId);
-  return new Map(rows.filter((r) => r.variantId).map((r) => [r.variantId!, r.n]));
+  const reserved = new Map(rows.filter((r) => r.variantId).map((r) => [r.variantId!, r.n]));
+  for (const [variantId, n] of await trendyolReservedByVariant(tx, variantIds)) {
+    reserved.set(variantId, (reserved.get(variantId) ?? 0) + n);
+  }
+  return reserved;
+}
+
+// Henüz kargoya verilmemiş Trendyol paketleri: ürün depoda ama satılmış
+const TRENDYOL_UNSHIPPED = ["Awaiting", "Created", "Picking", "Invoiced", "Repack"];
+
+/** Kargolanmamış Trendyol siparişleri için stoktan düşülmüş adet (numara başına). */
+export async function trendyolReservedByVariant(tx: DbOrTx, variantIds?: string[]): Promise<Map<string, number>> {
+  const filter = variantIds?.length ? sql`and s.variant_id in ${variantIds}` : sql``;
+  const result = await tx.execute<{ variant_id: string; n: number }>(sql`
+    select s.variant_id, sum(least(s.deducted, u.qty))::int as n
+    from trendyol_order_stock s
+    join (
+      select p.order_number, l->>'barcode' as barcode, sum((l->>'quantity')::int) as qty
+      from trendyol_packages p, jsonb_array_elements(p.lines) l
+      where p.status in ${TRENDYOL_UNSHIPPED}
+        and coalesce(l->>'status', '') not in ('Cancelled', 'UnSupplied', 'UnPacked')
+      group by 1, 2
+    ) u on u.order_number = s.order_number and u.barcode = s.barcode
+    where s.variant_id is not null and s.deducted > 0 ${filter}
+    group by s.variant_id
+  `);
+  return new Map(result.rows.map((r) => [r.variant_id, Number(r.n)]));
 }
 
 /** Ödemesi beklenen (süresi dolmamış) siparişlerde tutulan adetler. */

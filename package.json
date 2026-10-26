@@ -20,6 +20,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "maintenance": "tsx scripts/maintenance.ts",
+    "trendyol:sync": "tsx scripts/trendyol-sync.ts",
     "logo:trace": "node scripts/trace-logo.mjs"
   },
   "dependencies": {

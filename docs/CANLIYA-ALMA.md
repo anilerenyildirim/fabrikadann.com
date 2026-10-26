@@ -39,6 +39,11 @@ PAYMENT_PROVIDER=mock          # iyzico entegrasyonu eklenince: iyzico
 CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
 SMTP_URL=smtps://kullanici:parola@smtp.saglayici.com:465
 MAIL_FROM="fabrikadann <siparis@fabrikadann.com>"
+# Trendyol ortak stok (isteğe bağlı; bkz. §5c)
+TRENDYOL_SELLER_ID=
+TRENDYOL_API_KEY=
+TRENDYOL_API_SECRET=
+TRENDYOL_ENV=prod
 ```
 
 Notlar:
@@ -87,6 +92,40 @@ docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run 
 docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/delete-customer.ts musteri@ornek.com --onayla
 ```
 
+## 5c. Trendyol ortak stok
+
+Site ve Trendyol aynı depodan satar. Stoğun kaynağı sitedir (panel → Stok):
+
+- Trendyol'da oluşan sipariş, numaranın stoğundan düşülür (eşleşme **barkodla**: panelde her numaranın
+  barkodu Trendyol'daki barkodla aynı olmalı). İptal edilen / tedarik edilemeyen paketlerin adedi geri konur.
+- Barkodu olan her numaranın satılabilir stoğu değiştiğinde Trendyol'a gönderilir (fiyat gönderilmez;
+  Trendyol fiyatını Trendyol panelinden yönetin).
+- Trendyol iadeleri (Returned) stoğa otomatik dönmez: ürün kontrol edildikten sonra panelden elle ekleyin.
+- Depo sayımında Trendyol'da henüz kargolanmamış siparişler de "ayrılmış" sayılır.
+
+Kurulum:
+
+1. Satıcı panelinde Hesap Bilgilerim → Entegrasyon Bilgileri'nden Satıcı ID, API Key ve API Secret'ı alıp
+   `.env.production`'a yazın (bkz. §3), uygulamayı yeniden başlatın.
+2. **Açmadan önce** panelde her numaranın barkodunu girin ve sitedeki stoğu doğru yapın: satılabilir stok =
+   depodaki adet − iki kanalda henüz kargolanmamış siparişler. İlk çalıştırma son 13 günün Trendyol paketlerini
+   stok değiştirmeden "zaten düşülmüş" kabul eder ve sitedeki stoğu Trendyol'a gönderir (Trendyol'daki stok
+   sitedekiyle değişir). Emin değilseniz ilk çalıştırmadan sonra Stok sayfasında "Depo sayımı" ile sayılan
+   adedi girin; iki kanalın kargolanmamış siparişleri otomatik düşülür.
+3. Zamanlanmış görev (2 dakikada bir; iki kanalda aynı çiftin satılma penceresi bu süre kadardır):
+
+```cron
+*/2 * * * * cd /srv/fabrikadann && docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/trendyol-sync.ts >> /var/log/fabrikadann-trendyol.log 2>&1
+```
+
+Panelde Stok sayfasının altındaki "Trendyol senkronu" bölümü (ve sorun varsa Pano) şunları gösterir:
+son çalıştırma ve hata, stok yetmeyen Trendyol siparişleri (aynı çift iki kanalda satıldıysa: birini iptal
+edin ya da stok ekleyin; stok gelince eksik adet kendiliğinden düşülür), hiçbir numarayla eşleşmeyen
+barkodlar ve Trendyol'un reddettiği stok gönderimleri (bir saat sonra yeniden denenir).
+
+Önce test ortamında deneyin: `TRENDYOL_ENV=stage` ve test hesabı bilgileri (test ortamı için sunucunun
+çıkış IP'si Trendyol çağrı merkezine tanıtılmalı). Denenecekler §8'de.
+
 ## 6. Yedekleme (zorunlu)
 
 Sipariş verisi en kritik varlıktır. Her gece veritabanı ve görseller yedeklenmeli. Komut önce geçici
@@ -126,3 +165,6 @@ docker compose ... up -d app
 - [ ] Alan adı DNS'i sunucuya: yalnızca A kaydı (Docker IPv6 kurulmadan AAAA yayımlamayın). Cloudflare kullanılacaksa proxy açık + `deploy/Caddyfile`'daki `trusted_proxies` bloğu açık; `CLIENT_IP_HEADER=x-real-ip` kalır.
 - [ ] Yedeklemenin çalıştığının doğrulanması.
 - [ ] e-Fatura/e-Arşiv entegrasyonu (muhasebe sürecinize göre).
+- [ ] Trendyol kullanılacaksa (§5c) test ortamında: yeni sipariş stoktan düşüyor mu, iptal geri koyuyor mu,
+  stok değişikliği Trendyol'a ulaşıyor mu (panelde "onay bekleyen" sıfırlanıyor mu). Trendyol tarih
+  filtresinin GMT+3 yorumu ve paket bölme davranışı canlı veriyle doğrulanmalı.

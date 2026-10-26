@@ -29,6 +29,13 @@
       "when": 1792965674329,
       "tag": "0003_eposta_dogrulama",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793048553012,
+      "tag": "0004_trendyol_stok",
+      "breakpoints": true
     }
   ]
 }

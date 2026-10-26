@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionButton } from "@/components/admin/forms";
+import { trendyolProblems } from "@/components/admin/TrendyolPanel";
+import { ErrorMark } from "@/components/ui/form";
 import {
   Empty,
   formatDateTime,
@@ -16,6 +18,7 @@ import {
 import { formatPrice } from "@/lib/money";
 import { requireAdmin } from "@/server/auth/current";
 import { getDashboard } from "@/server/services/admin/dashboard";
+import { getTrendyolStatus } from "@/server/services/trendyol";
 import { resolveRefundAction } from "./actions";
 
 export const metadata: Metadata = { title: "Pano" };
@@ -24,7 +27,8 @@ const dayLabel = new Intl.DateTimeFormat("tr-TR", { weekday: "short", day: "nume
 
 export default async function DashboardPage() {
   const admin = await requireAdmin();
-  const d = await getDashboard();
+  const [d, trendyol] = await Promise.all([getDashboard(), getTrendyolStatus()]);
+  const trendyolIssues = trendyolProblems(trendyol);
   const maxDay = Math.max(1, ...d.week.map((w) => w.total));
 
   return (
@@ -74,6 +78,26 @@ export default async function DashboardPage() {
                   pendingLabel="Kaydediliyor…"
                   confirm={`${r.orderNumber ?? "Bu"} siparişinin parasını ödeme sağlayıcısı panelinden iade ettiniz mi?`}
                 />
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {trendyolIssues.length > 0 && (
+        <Section
+          title="Trendyol senkronu"
+          actions={
+            <Link href="/yonetim/stok#trendyol" className="label inline-flex min-h-11 items-center underline-offset-4 hover:underline">
+              Ayrıntılar
+            </Link>
+          }
+        >
+          <ul className="border-t border-ink">
+            {trendyolIssues.map((p) => (
+              <li key={p} className="flex items-start gap-2 border-b border-ink py-2.5 text-[0.8125rem] font-medium">
+                <ErrorMark />
+                <span className="min-w-0 break-words">{p}</span>
               </li>
             ))}
           </ul>

@@ -38,7 +38,7 @@ COPY --from=build /app/public ./public
 # Migration, yönetici oluşturma ve bakım betikleri (yalnızca üretim bağımlılıklarıyla)
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/drizzle ./drizzle
-COPY --from=build /app/scripts/migrate.ts /app/scripts/create-admin.ts /app/scripts/maintenance.ts /app/scripts/delete-customer.ts ./scripts/
+COPY --from=build /app/scripts/migrate.ts /app/scripts/create-admin.ts /app/scripts/maintenance.ts /app/scripts/delete-customer.ts /app/scripts/trendyol-sync.ts ./scripts/
 COPY --from=build /app/src ./src
 COPY --from=build /app/tsconfig.json /app/package.json ./
 # Uygulama kullanıcısı yalnızca yüklenen görseller klasörüne yazabilir
