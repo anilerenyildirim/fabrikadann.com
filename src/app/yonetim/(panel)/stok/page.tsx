@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BulkStockForm } from "@/components/admin/BulkStockForm";
 import { StockAdjustForm } from "@/components/admin/product/ProductForms";
 import { TrendyolPanel } from "@/components/admin/TrendyolPanel";
 import {
@@ -21,7 +22,7 @@ import {
 import { requireAdmin } from "@/server/auth/current";
 import { listStockMovements, listStockRows, STOCK_REASON_LABELS, type StockFilter } from "@/server/services/admin/stock";
 import { getTrendyolStatus } from "@/server/services/trendyol";
-import { adjustStockAction } from "./actions";
+import { adjustStockAction, bulkStockAction } from "./actions";
 
 export const metadata: Metadata = { title: "Stok" };
 
@@ -113,6 +114,26 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
       {all.length > 0 && <Pager page={page} pageCount={pageCount} total={all.length} unit="numara" hrefFor={href} />}
 
       <div className="mt-12">
+        <Section
+          id="toplu"
+          title="Toplu barkod ve stok"
+          description={
+            <>
+              Tablodan kopyalayıp yapıştırın: her satırda SKU, barkod ve stok (sekme, noktalı virgül ya da virgülle ayrılmış).
+              Boş bırakılan alan değişmez. Barkodlar Trendyol eşleşmesi için kullanılır. Önce kontrol edilir; bir satırda hata
+              varsa hiçbir değişiklik yapılmaz.
+            </>
+          }
+        >
+          <details className="group">
+            <summary className="label inline-flex min-h-11 cursor-pointer items-center underline-offset-4 hover:underline">
+              Listeyi aç
+            </summary>
+            <div className="mt-4">
+              <BulkStockForm action={bulkStockAction} />
+            </div>
+          </details>
+        </Section>
         <TrendyolPanel status={trendyol} />
       </div>
 

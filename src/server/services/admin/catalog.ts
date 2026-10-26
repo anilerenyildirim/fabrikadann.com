@@ -57,7 +57,7 @@ const colorNameSchema = z
   .max(40, "Renk adı en fazla 40 karakter olabilir.");
 const altSchema = z.string().trim().max(200, "Alt metin en fazla 200 karakter olabilir.");
 const directionSchema = z.enum(["up", "down"]);
-const skuSchema = z
+export const skuSchema = z
   .string()
   .trim()
   .transform((s) => s.toUpperCase())
@@ -68,7 +68,7 @@ const skuSchema = z
       .max(64, "SKU en fazla 64 karakter olabilir.")
       .regex(/^[A-Z0-9][A-Z0-9._-]*$/, "SKU yalnızca harf, rakam, nokta, tire ve alt çizgi içerebilir."),
   );
-const barcodeSchema = z
+export const barcodeSchema = z
   .string()
   .trim()
   .max(32, "Barkod en fazla 32 karakter olabilir.")
@@ -78,7 +78,7 @@ const stockSchema = z
   .int("Stok için tam sayı yazın.")
   .min(0, "Stok 0'dan küçük olamaz.")
   .max(MAX_STOCK, "Stok en fazla 100.000 olabilir.");
-const noteSchema = z
+export const noteSchema = z
   .string()
   .trim()
   .min(3, "Düzeltmenin sebebini yazın (ör. sayım farkı).")
