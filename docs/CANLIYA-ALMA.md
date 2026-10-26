@@ -126,7 +126,7 @@ Kurulum:
 Panelde Stok sayfasının altındaki "Trendyol senkronu" bölümü (ve sorun varsa Pano) şunları gösterir:
 son çalıştırma ve hata, stok yetmeyen Trendyol siparişleri (aynı çift iki kanalda satıldıysa: birini iptal
 edin ya da stok ekleyin; stok gelince eksik adet kendiliğinden düşülür), hiçbir numarayla eşleşmeyen
-barkodlar ve Trendyol'un reddettiği stok gönderimleri (bir saat sonra yeniden denenir).
+barkodlar ve Trendyol'un reddettiği stok gönderimleri (15 dakika sonra yeniden denenir).
 
 Önce test ortamında deneyin: `TRENDYOL_ENV=stage` ve test hesabı bilgileri (test ortamı için sunucunun
 çıkış IP'si Trendyol çağrı merkezine tanıtılmalı). Denenecekler §8'de.

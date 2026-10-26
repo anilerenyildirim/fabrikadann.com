@@ -162,7 +162,7 @@ export function TrendyolPanel({ status: s, syncAction }: { status: TrendyolStatu
                 </span>
               </div>
               <p className="break-words text-graphite">
-                {r.error ?? "Bilinmeyen hata"} · {formatDateTime(r.pushedAt)}. Bir saat sonra yeniden denenir.
+                {r.error ?? "Bilinmeyen hata"} · {formatDateTime(r.pushedAt)}. 15 dakika sonra yeniden denenir.
               </p>
             </li>
           ))}
