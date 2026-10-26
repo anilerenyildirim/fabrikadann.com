@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useId, useState } from "react";
 import { Button, TextArea } from "@/components/ui/form";
 import type { BulkResult } from "@/server/services/admin/bulk-stock";
 import type { FormState } from "@/lib/form";
@@ -22,10 +22,14 @@ export function BulkStockForm({ action }: { action: (prev: BulkState, form: Form
   const r = state.result;
   const e = state.fieldErrors ?? {};
   const physical = (state.values?.mode ?? "physical") === "physical";
-  const canApply = !!r && !r.applied && r.errors.length === 0 && r.changes.length > 0;
+  // Önizlemeden sonra liste ya da seçim değişirse "Güncelle" gizlenir: yalnızca görülen liste uygulanır
+  const [editedAfter, setEditedAfter] = useState<BulkState | null>(null);
+  const edited = editedAfter === state;
+  const canApply = !!r && !r.applied && r.errors.length === 0 && r.changes.length > 0 && !edited;
 
   return (
-    <form action={formAction} onSubmit={submit} className="flex flex-col gap-4">
+    <form action={formAction} onSubmit={submit} onChange={() => setEditedAfter(state)} className="flex flex-col gap-4">
+      {canApply && r.fingerprint && <input type="hidden" name="onizleme" value={r.fingerprint} />}
       <TextArea
         label="Satırlar (SKU; barkod; stok)"
         name="satirlar"
@@ -90,7 +94,11 @@ export function BulkStockForm({ action }: { action: (prev: BulkState, form: Form
         </div>
       )}
 
-      {r && !r.applied && r.errors.length === 0 && (
+      {edited && r && !r.applied && (
+        <p className="text-[0.8125rem] text-graphite">Liste değişti; uygulamadan önce yeniden “Kontrol et”e basın.</p>
+      )}
+
+      {r && !r.applied && r.errors.length === 0 && !edited && (
         <p className="text-[0.8125rem] text-graphite">
           {r.changes.length === 0
             ? "Listede değişiklik yok: barkodlar ve stoklar zaten bu değerlerde."

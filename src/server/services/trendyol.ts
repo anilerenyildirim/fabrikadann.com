@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, pool, schema, type Tx } from "@/server/db";
 import { describeError } from "@/server/log";
 import { TrendyolError, trendyolConfig, type TrendyolClient, type TrendyolPackage } from "@/server/trendyol/client";
@@ -330,6 +330,29 @@ async function takeAvailable(tx: Tx, variantId: string, quantity: number, refere
 // ---------- 2. Site stoğu → Trendyol ----------
 
 async function pushStock(deps: SyncDeps, now: Date) {
+  const pushErrors: string[] = [];
+  // Numaradan kaldırılan ya da değiştirilen eski barkod Trendyol'da son adetle satışta kalmasın: 0 gönderilir.
+  // Barkod başka bir numaraya geçtiyse o numaranın stoğu gönderileceği için atlanır.
+  const orphans = await db
+    .select({ variantId: trendyolStockPush.variantId, barcode: trendyolStockPush.barcode })
+    .from(trendyolStockPush)
+    .innerJoin(variants, eq(variants.id, trendyolStockPush.variantId))
+    .where(
+      sql`${variants.barcode} is distinct from ${trendyolStockPush.barcode}
+        and not exists (select 1 from variants v2 where v2.barcode = ${trendyolStockPush.barcode})`,
+    )
+    .limit(PUSH_CHUNK);
+  if (orphans.length) {
+    try {
+      await deps.client.updateInventory(orphans.map((o) => ({ barcode: o.barcode, quantity: 0 })));
+      // Kayıt silinir: numaranın yeni barkodu (varsa) aşağıda baştan gönderilir
+      await db.delete(trendyolStockPush).where(inArray(trendyolStockPush.variantId, orphans.map((o) => o.variantId)));
+    } catch (e) {
+      if (!(e instanceof TrendyolError)) throw e;
+      pushErrors.push(e.message);
+    }
+  }
+
   const sendQuantity = sql<number>`least(${variants.stock}, ${MAX_QUANTITY})`;
   const candidates = await db
     .select({ variantId: variants.id, barcode: variants.barcode, quantity: sendQuantity })
@@ -348,7 +371,6 @@ async function pushStock(deps: SyncDeps, now: Date) {
     .limit(PUSH_CHUNK * 5);
 
   let pushed = 0;
-  const pushErrors: string[] = [];
   for (let i = 0; i < candidates.length; i += PUSH_CHUNK) {
     const chunk = candidates.slice(i, i + PUSH_CHUNK).map((c) => ({ ...c, barcode: c.barcode!, quantity: Number(c.quantity) }));
     let batchRequestId: string;

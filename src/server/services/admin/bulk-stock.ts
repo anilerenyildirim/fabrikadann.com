@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { db, schema } from "@/server/db";
+import { db, schema, type DbOrTx } from "@/server/db";
 import { audit } from "../audit";
-import { setPhysicalCount, setStock } from "../stock";
+import { reservedByVariant, setStock } from "../stock";
 import { barcodeSchema, MAX_STOCK, noteSchema, skuSchema } from "./catalog";
 import { AdminError, assertAdmin, isUniqueViolation, type AdminContext } from "./context";
 
@@ -36,6 +37,8 @@ export type BulkResult = {
   barcodeChanges: number;
   stockChanges: number;
   applied: boolean;
+  /** Önizlemenin özeti; uygulamada geri gönderilir */
+  fingerprint?: string;
 };
 
 export const bulkInputSchema = z.object({
@@ -43,6 +46,7 @@ export const bulkInputSchema = z.object({
   mode: z.enum(["available", "physical"]),
   note: z.string().default(""),
   apply: z.boolean(),
+  fingerprint: z.string().max(100).optional(),
 });
 
 /** Yapıştırılan metni satırlara ayırır; biçim hatalarını satır numarasıyla döner. */
@@ -103,11 +107,78 @@ export function parseBulkText(text: string): { lines: BulkLine[]; errors: string
   return { lines, errors };
 }
 
+type Planned = BulkChange & { variantId: string };
+
+/** Satırları veritabanındaki güncel değerlerle karşılaştırıp değişiklik listesini çıkarır. */
+async function planChanges(tx: DbOrTx, lines: BulkLine[], mode: BulkMode, errors: string[]): Promise<Planned[]> {
+  const current = await tx
+    .select({
+      id: variants.id,
+      sku: variants.sku,
+      barcode: variants.barcode,
+      stock: variants.stock,
+      size: variants.size,
+      colorName: productColors.name,
+      productName: products.name,
+    })
+    .from(variants)
+    .innerJoin(productColors, eq(productColors.id, variants.colorId))
+    .innerJoin(products, eq(products.id, productColors.productId))
+    .where(inArray(variants.sku, lines.map((l) => l.sku)));
+  const bySku = new Map(current.map((v) => [v.sku, v]));
+
+  const changes: Planned[] = [];
+  for (const l of lines) {
+    const v = bySku.get(l.sku);
+    if (!v) {
+      errors.push(`${l.line}. satır: ${l.sku} SKU'su bulunamadı.`);
+      continue;
+    }
+    const barcodeTo = l.barcode ?? v.barcode;
+    const stockChanged = l.stock !== undefined && (mode === "physical" || l.stock !== v.stock);
+    if (barcodeTo === v.barcode && !stockChanged) continue;
+    changes.push({
+      variantId: v.id,
+      line: l.line,
+      sku: v.sku,
+      label: `${v.productName} · ${v.colorName} · ${v.size}`,
+      barcodeFrom: v.barcode,
+      barcodeTo,
+      stockFrom: v.stock,
+      stockValue: stockChanged ? l.stock : undefined,
+    });
+  }
+
+  // Yeni barkod, bu listede barkodu değişmeyen başka bir numarada kullanılıyorsa hata
+  const moves = changes.filter((c) => c.barcodeTo !== c.barcodeFrom);
+  if (moves.length) {
+    const owners = await tx
+      .select({ sku: variants.sku, barcode: variants.barcode })
+      .from(variants)
+      .where(inArray(variants.barcode, moves.map((c) => c.barcodeTo!)));
+    const leaving = new Set(moves.map((c) => c.sku));
+    for (const o of owners) {
+      if (leaving.has(o.sku)) continue;
+      const claim = moves.find((c) => c.barcodeTo === o.barcode)!;
+      errors.push(`${claim.line}. satır: ${o.barcode} barkodu ${o.sku} numarasında kullanılıyor.`);
+    }
+  }
+  return changes;
+}
+
+/** Önizlenen planın özeti: uygulama yalnızca aynı liste, aynı tür ve aynı güncel değerlerle yapılır. */
+function fingerprintOf(mode: BulkMode, note: string, changes: Planned[]): string {
+  const core = changes.map((c) => [c.variantId, c.barcodeFrom, c.barcodeTo, c.stockFrom, c.stockValue ?? null]);
+  return createHash("sha256").update(JSON.stringify([mode, note, core])).digest("hex");
+}
+
+const strip = (changes: Planned[]): BulkChange[] => changes.map(({ variantId: _id, ...c }) => c);
+
 export async function bulkUpdateVariants(input: z.input<typeof bulkInputSchema>, ctx: AdminContext): Promise<BulkResult> {
   await assertAdmin(ctx);
   const parsedInput = bulkInputSchema.safeParse(input);
   if (!parsedInput.success) throw new AdminError(parsedInput.error.issues[0]?.message ?? "Girdi geçersiz.");
-  const { text, mode, apply } = parsedInput.data;
+  const { text, mode, apply, fingerprint } = parsedInput.data;
   const { lines, errors } = parseBulkText(text);
   const empty: BulkResult = { errors, changes: [], barcodeChanges: 0, stockChanges: 0, applied: false };
   if (lines.length === 0) return empty;
@@ -126,111 +197,81 @@ export async function bulkUpdateVariants(input: z.input<typeof bulkInputSchema>,
     }
   }
 
-  const current = await db
-    .select({
-      id: variants.id,
-      sku: variants.sku,
-      barcode: variants.barcode,
-      stock: variants.stock,
-      size: variants.size,
-      colorName: productColors.name,
-      productName: products.name,
-    })
-    .from(variants)
-    .innerJoin(productColors, eq(productColors.id, variants.colorId))
-    .innerJoin(products, eq(products.id, productColors.productId))
-    .where(inArray(variants.sku, [...seenSku.keys()]));
-  const bySku = new Map(current.map((v) => [v.sku, v]));
-
-  const changes: BulkChange[] = [];
-  for (const l of lines) {
-    const v = bySku.get(l.sku);
-    if (!v) {
-      errors.push(`${l.line}. satır: ${l.sku} SKU'su bulunamadı.`);
-      continue;
-    }
-    const barcodeTo = l.barcode ?? v.barcode;
-    const stockChanged = l.stock !== undefined && (mode === "physical" || l.stock !== v.stock);
-    if (barcodeTo === v.barcode && !stockChanged) continue;
-    changes.push({
-      line: l.line,
-      sku: v.sku,
-      label: `${v.productName} · ${v.colorName} · ${v.size}`,
-      barcodeFrom: v.barcode,
-      barcodeTo,
-      stockFrom: v.stock,
-      stockValue: stockChanged ? l.stock : undefined,
-    });
-  }
-
-  // Barkod başka bir numarada kullanılıyorsa (o numara bu listede başka barkoda geçmiyorsa) hata
-  const newBarcodes = changes.filter((c) => c.barcodeTo !== c.barcodeFrom).map((c) => c.barcodeTo!);
-  if (newBarcodes.length) {
-    const owners = await db
-      .select({ sku: variants.sku, barcode: variants.barcode })
-      .from(variants)
-      .where(inArray(variants.barcode, newBarcodes));
-    const leaving = new Set(changes.filter((c) => c.barcodeTo !== c.barcodeFrom).map((c) => c.sku));
-    for (const o of owners) {
-      if (leaving.has(o.sku)) continue;
-      const c = changes.find((x) => x.barcodeTo === o.barcode)!;
-      if (c.sku !== o.sku) errors.push(`${c.line}. satır: ${o.barcode} barkodu ${o.sku} numarasında kullanılıyor.`);
-    }
-  }
-
-  const stockChanges = changes.filter((c) => c.stockValue !== undefined).length;
-  let note = "";
-  if (stockChanges > 0) {
-    const n = noteSchema.safeParse(parsedInput.data.note);
-    if (!n.success) errors.push(n.error.issues[0]?.message ?? "Sebep yazın.");
-    else note = n.data;
-  }
-
-  const result: BulkResult = {
+  const summarize = (changes: Planned[], note: string): BulkResult => ({
     errors,
-    changes,
+    changes: strip(changes),
     barcodeChanges: changes.filter((c) => c.barcodeTo !== c.barcodeFrom).length,
-    stockChanges,
+    stockChanges: changes.filter((c) => c.stockValue !== undefined).length,
     applied: false,
+    fingerprint: fingerprintOf(mode, note, changes),
+  });
+  const checkNote = (changes: Planned[]) => {
+    if (!changes.some((c) => c.stockValue !== undefined)) return "";
+    const n = noteSchema.safeParse(parsedInput.data.note);
+    if (n.success) return n.data;
+    errors.push(n.error.issues[0]?.message ?? "Sebep yazın.");
+    return "";
   };
-  if (!apply || errors.length > 0 || changes.length === 0) return result;
 
+  if (!apply) {
+    const changes = await planChanges(db, lines, mode, errors);
+    return summarize(changes, checkNote(changes));
+  }
+
+  const stale = "Liste kontrol edildikten sonra değişti (liste, tür, sebep ya da stoklar). “Kontrol et” ile yeniden önizleyin.";
   try {
-    await db.transaction(async (tx) => {
-      const ids = changes.map((c) => bySku.get(c.sku)!.id);
-      // Kimlik sırasıyla kilit (ödeme akışıyla aynı sıra)
-      await tx.select({ id: variants.id }).from(variants).where(inArray(variants.id, ids)).orderBy(asc(variants.id)).for("update");
-      const barcodeMoves = changes.filter((c) => c.barcodeTo !== c.barcodeFrom);
+    return await db.transaction(async (tx) => {
+      // Kimlik sırasıyla kilit (ödeme akışı ve Trendyol senkronuyla aynı sıra); plan kilit altında yeniden çıkarılır
+      await tx
+        .select({ id: variants.id })
+        .from(variants)
+        .where(inArray(variants.sku, [...seenSku.keys()]))
+        .orderBy(asc(variants.id))
+        .for("update");
+      const changes = await planChanges(tx, lines, mode, errors);
+      const note = checkNote(changes);
+      const result = summarize(changes, note);
+      if (errors.length > 0 || changes.length === 0) return result;
+      if (!fingerprint || fingerprint !== result.fingerprint) throw new AdminError(stale);
+
+      const moves = changes.filter((c) => c.barcodeTo !== c.barcodeFrom);
       // Önce eski barkodlar boşaltılır: liste içinde barkod takası benzersizlik kuralına takılmaz
-      for (const c of barcodeMoves) await tx.update(variants).set({ barcode: null }).where(eq(variants.sku, c.sku));
-      for (const c of barcodeMoves) await tx.update(variants).set({ barcode: c.barcodeTo }).where(eq(variants.sku, c.sku));
+      for (const c of moves) await tx.update(variants).set({ barcode: null }).where(eq(variants.id, c.variantId));
+      for (const c of moves) await tx.update(variants).set({ barcode: c.barcodeTo }).where(eq(variants.id, c.variantId));
+
       const meta = { reason: "manual" as const, note, actorId: ctx.actorId };
-      for (const c of changes) {
-        if (c.stockValue === undefined) continue;
-        const id = bySku.get(c.sku)!.id;
-        if (mode === "physical") await setPhysicalCount(tx, id, c.stockValue, meta);
-        else await setStock(tx, id, c.stockValue, meta);
+      const stockRows = changes.filter((c) => c.stockValue !== undefined);
+      const reserved = mode === "physical" ? await reservedByVariant(tx, stockRows.map((c) => c.variantId)) : new Map<string, number>();
+      for (const c of stockRows) {
+        // Depo sayımı: satılabilir = sayım − bekleyen siparişlerde ayrılmış
+        const target = mode === "physical" ? Math.max(0, c.stockValue! - (reserved.get(c.variantId) ?? 0)) : c.stockValue!;
+        await setStock(tx, c.variantId, target, meta);
       }
-      await audit(
-        {
-          action: "variant.bulk_update",
-          actorId: ctx.actorId,
-          target: "toplu",
-          data: {
-            mode,
-            note,
-            barcodeChanges: result.barcodeChanges,
-            stockChanges,
-            changes: changes.slice(0, 500).map((c) => ({ sku: c.sku, barcode: c.barcodeTo, from: c.barcodeFrom, stock: c.stockValue })),
+
+      // Her barkod değişikliği kayıtta kalsın (Trendyol eşleşmesi buna bağlı): 500'lük parçalar
+      for (let i = 0; i < changes.length; i += 500) {
+        await audit(
+          {
+            action: "variant.bulk_update",
+            actorId: ctx.actorId,
+            target: "toplu",
+            data: {
+              mode,
+              note,
+              barcodeChanges: result.barcodeChanges,
+              stockChanges: result.stockChanges,
+              part: i / 500 + 1,
+              changes: changes.slice(i, i + 500).map((c) => ({ sku: c.sku, barcode: c.barcodeTo, from: c.barcodeFrom, stock: c.stockValue })),
+            },
+            ip: ctx.ip,
           },
-          ip: ctx.ip,
-        },
-        tx,
-      );
+          tx,
+        );
+      }
+      return { ...result, applied: true };
     });
   } catch (e) {
-    if (isUniqueViolation(e)) throw new AdminError("Bir barkod bu arada başka bir numaraya yazılmış. Önizlemeyi yenileyip yeniden deneyin.");
+    if (isUniqueViolation(e)) throw new AdminError("Bir barkod bu arada başka bir numaraya yazılmış. “Kontrol et” ile yeniden önizleyin.");
     throw e;
   }
-  return { ...result, applied: true };
 }

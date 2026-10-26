@@ -13,6 +13,12 @@ beforeEach(async () => {
   ctx = { actorId: admin.id, ip: "10.0.0.1" };
 });
 
+/** Önizleyip aynı listeyi uygular (arayüzdeki akış). */
+async function previewAndApply(text: string, mode: "available" | "physical", note: string) {
+  const preview = await bulkUpdateVariants({ text, mode, note, apply: false }, ctx);
+  return bulkUpdateVariants({ text, mode, note, apply: true, fingerprint: preview.fingerprint }, ctx);
+}
+
 const variant = async (sku: string) => (await db.select().from(schema.variants).where(eq(schema.variants.sku, sku)))[0]!;
 
 describe("ayrıştırma", () => {
@@ -51,7 +57,7 @@ describe("toplu güncelleme", () => {
     expect(preview).toMatchObject({ errors: [], barcodeChanges: 2, stockChanges: 1, applied: false });
     expect((await variant(a!.sku)).barcode).toBeNull();
 
-    const done = await bulkUpdateVariants({ text, mode: "available", note: "Açılış sayımı", apply: true }, ctx);
+    const done = await previewAndApply(text, "available", "Açılış sayımı");
     expect(done.applied).toBe(true);
     expect(await variant(a!.sku)).toMatchObject({ barcode: "8680000000017", stock: 9 });
     expect(await variant(b!.sku)).toMatchObject({ barcode: "8680000000024", stock: 2 });
@@ -64,7 +70,7 @@ describe("toplu güncelleme", () => {
   test("bir satır hatalıysa hiçbir şey yazılmaz", async () => {
     const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 5 }] });
     const text = `${variants[0]!.sku};8680000000017;9\nYOK-SKU;8680000000031;1`;
-    const r = await bulkUpdateVariants({ text, mode: "available", note: "Sayım", apply: true }, ctx);
+    const r = await previewAndApply(text, "available", "Sayım");
     expect(r.applied).toBe(false);
     expect(r.errors).toEqual(["2. satır: YOK-SKU SKU'su bulunamadı."]);
     expect(await variant(variants[0]!.sku)).toMatchObject({ barcode: null, stock: 5 });
@@ -76,10 +82,10 @@ describe("toplu güncelleme", () => {
     await db.update(schema.variants).set({ barcode: "AAAA1" }).where(eq(schema.variants.id, a!.id));
     await db.update(schema.variants).set({ barcode: "BBBB1" }).where(eq(schema.variants.id, b!.id));
 
-    const clash = await bulkUpdateVariants({ text: `${c!.sku};AAAA1`, mode: "available", note: "", apply: true }, ctx);
+    const clash = await previewAndApply(`${c!.sku};AAAA1`, "available", "");
     expect(clash.errors[0]).toMatch(/AAAA1 barkodu .* numarasında kullanılıyor/);
 
-    const swap = await bulkUpdateVariants({ text: `${a!.sku};BBBB1\n${b!.sku};AAAA1`, mode: "available", note: "", apply: true }, ctx);
+    const swap = await previewAndApply(`${a!.sku};BBBB1\n${b!.sku};AAAA1`, "available", "");
     expect(swap.applied).toBe(true);
     expect((await variant(a!.sku)).barcode).toBe("BBBB1");
     expect((await variant(b!.sku)).barcode).toBe("AAAA1");
@@ -91,7 +97,7 @@ describe("toplu güncelleme", () => {
     const dup = await bulkUpdateVariants({ text: `${a!.sku};;2\n${a!.sku};;3\n${b!.sku};X1234;\n${a!.sku}x;X1234`, mode: "available", note: "Sayım", apply: false }, ctx);
     expect(dup.errors.some((e) => e.includes("SKU'su 1. satırda da var"))).toBe(true);
     expect(dup.errors.some((e) => e.includes("X1234 barkodu 3. satırda da var"))).toBe(true);
-    const noNote = await bulkUpdateVariants({ text: `${a!.sku};;7`, mode: "available", note: "", apply: true }, ctx);
+    const noNote = await previewAndApply(`${a!.sku};;7`, "available", "");
     expect(noNote.applied).toBe(false);
     expect(noNote.errors[0]).toMatch(/sebebini/);
   });
@@ -99,7 +105,7 @@ describe("toplu güncelleme", () => {
   test("depo sayımı bekleyen siparişlerde ayrılmış adetleri düşer", async () => {
     const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 5 }] });
     await orderFor({ guestToken: "g" }, variants[0]!.id, 2);
-    const r = await bulkUpdateVariants({ text: `${variants[0]!.sku};;10`, mode: "physical", note: "Sayım", apply: true }, ctx);
+    const r = await previewAndApply(`${variants[0]!.sku};;10`, "physical", "Sayım");
     expect(r.applied).toBe(true);
     expect((await variant(variants[0]!.sku)).stock).toBe(8);
   });
@@ -109,5 +115,39 @@ describe("toplu güncelleme", () => {
     await expect(
       bulkUpdateVariants({ text: "FD-1;;1", mode: "available", note: "x", apply: true }, { actorId: user.id, ip: "1.1.1.1" }),
     ).rejects.toBeInstanceOf(AdminAccessError);
+  });
+
+  test("önizlemeden sonra stok değiştiyse (sipariş geldi) uygulanmaz", async () => {
+    const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 5 }] });
+    const text = `${variants[0]!.sku};;8`;
+    const preview = await bulkUpdateVariants({ text, mode: "available", note: "Sayım", apply: false }, ctx);
+    await orderFor({ guestToken: "g" }, variants[0]!.id, 2);
+    await expect(
+      bulkUpdateVariants({ text, mode: "available", note: "Sayım", apply: true, fingerprint: preview.fingerprint }, ctx),
+    ).rejects.toThrow(/yeniden önizleyin/);
+    expect((await variant(variants[0]!.sku)).stock).toBe(3);
+  });
+
+  test("önizlenenden farklı liste ya da tür uygulanmaz; önizlemesiz uygulama reddedilir", async () => {
+    const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 5 }] });
+    const text = `${variants[0]!.sku};;8`;
+    const preview = await bulkUpdateVariants({ text, mode: "physical", note: "Sayım", apply: false }, ctx);
+    await expect(
+      bulkUpdateVariants({ text, mode: "available", note: "Sayım", apply: true, fingerprint: preview.fingerprint }, ctx),
+    ).rejects.toThrow(/yeniden önizleyin/);
+    await expect(
+      bulkUpdateVariants({ text: `${variants[0]!.sku};;9`, mode: "physical", note: "Sayım", apply: true, fingerprint: preview.fingerprint }, ctx),
+    ).rejects.toThrow(/yeniden önizleyin/);
+    await expect(bulkUpdateVariants({ text, mode: "physical", note: "Sayım", apply: true }, ctx)).rejects.toThrow(/yeniden önizleyin/);
+    expect((await variant(variants[0]!.sku)).stock).toBe(5);
+  });
+
+  test("barkod çakışması satır sırasından bağımsız yakalanır", async () => {
+    const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 1 }, { size: "41", stock: 1 }] });
+    const [a, b] = variants;
+    await db.update(schema.variants).set({ barcode: "XXXX1" }).where(eq(schema.variants.id, b!.id));
+    const r = await bulkUpdateVariants({ text: `${b!.sku};;5
+${a!.sku};XXXX1;`, mode: "available", note: "Sayım", apply: false }, ctx);
+    expect(r.errors).toEqual([`2. satır: XXXX1 barkodu ${b!.sku} numarasında kullanılıyor.`]);
   });
 });

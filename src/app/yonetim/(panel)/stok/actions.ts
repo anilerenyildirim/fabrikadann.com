@@ -58,6 +58,7 @@ const bulkForm = z.object({
   mode: z.enum(["available", "physical"]).default("physical"),
   note: z.string().max(400).default(""),
   islem: z.enum(["onizle", "uygula"]).default("onizle"),
+  onizleme: z.string().max(100).optional(),
 });
 
 /** Toplu barkod/stok: "onizle" yalnızca kontrol eder, "uygula" hatasızsa hepsini birlikte yazar. */
@@ -65,10 +66,10 @@ export async function bulkStockAction(_prev: BulkState, form: FormData): Promise
   const ctx = await adminContext();
   const parsed = parseForm(bulkForm, form);
   if (!parsed.ok) return parsed.state;
-  const { satirlar, mode, note, islem } = parsed.data;
+  const { satirlar, mode, note, islem, onizleme } = parsed.data;
   let result: BulkResult;
   try {
-    result = await bulkUpdateVariants({ text: satirlar, mode, note, apply: islem === "uygula" }, ctx);
+    result = await bulkUpdateVariants({ text: satirlar, mode, note, apply: islem === "uygula", fingerprint: onizleme }, ctx);
   } catch (e) {
     return errorState(e, parsed.values, "toplu-stok");
   }

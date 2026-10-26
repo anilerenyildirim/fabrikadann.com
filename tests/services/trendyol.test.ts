@@ -406,4 +406,30 @@ describe("senkron", () => {
     const status = await getTrendyolStatus();
     expect(status.state.priceWarnings).toMatchObject([{ productId: product.id, price: 100000, trendyolPrice: 90000 }]);
   });
+
+  test("numaradan kaldırılan eski barkod Trendyol'a 0 olarak gönderilir; başka numaraya geçen barkod gönderilmez", async () => {
+    const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 4 }, { size: "41", stock: 6 }] });
+    const [a, b] = variants;
+    await db.update(schema.variants).set({ barcode: "ESKI-A" }).where(eq(schema.variants.id, a!.id));
+    await db.update(schema.variants).set({ barcode: "ESKI-B" }).where(eq(schema.variants.id, b!.id));
+    await run();
+    // A'nın barkodu değişti, B'nin barkodu kaldırıldı
+    await db.update(schema.variants).set({ barcode: "YENI-A" }).where(eq(schema.variants.id, a!.id));
+    await db.update(schema.variants).set({ barcode: null }).where(eq(schema.variants.id, b!.id));
+    const before = fake.posts.length;
+    await run();
+    const sent = fake.posts.slice(before).flatMap((p) => p.items);
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        { barcode: "ESKI-A", quantity: 0 },
+        { barcode: "ESKI-B", quantity: 0 },
+        { barcode: "YENI-A", quantity: 4 },
+      ]),
+    );
+    expect(sent).toHaveLength(3);
+    // Sonraki çalıştırmada yeniden gönderilmez
+    const after = fake.posts.length;
+    await run();
+    expect(fake.posts).toHaveLength(after);
+  });
 });
