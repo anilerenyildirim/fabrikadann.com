@@ -50,6 +50,13 @@
       "when": 1793051350537,
       "tag": "0006_trendyol_gonderim_barkod",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793052021592,
+      "tag": "0007_trendyol_deneme_sayisi",
+      "breakpoints": true
     }
   ]
 }

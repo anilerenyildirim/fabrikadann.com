@@ -1,0 +1,1 @@
+ALTER TABLE "trendyol_stock_push" ADD COLUMN "attempts" integer DEFAULT 0 NOT NULL;

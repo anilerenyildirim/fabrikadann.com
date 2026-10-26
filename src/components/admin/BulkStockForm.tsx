@@ -38,7 +38,7 @@ export function BulkStockForm({ action }: { action: (prev: BulkState, form: Form
         placeholder={EXAMPLE}
         defaultValue={state.values?.satirlar}
         error={e.satirlar}
-        className="[&_textarea]:font-mono [&_textarea]:text-[0.8125rem]"
+        className="[&_textarea]:text-[0.8125rem]"
       />
       <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
         <div className="flex flex-col">
@@ -102,7 +102,7 @@ export function BulkStockForm({ action }: { action: (prev: BulkState, form: Form
         <p className="text-[0.8125rem] text-graphite">
           {r.changes.length === 0
             ? "Listede değişiklik yok: barkodlar ve stoklar zaten bu değerlerde."
-            : `${r.barcodeChanges} barkod ve ${r.stockChanges} stok değişecek. Kontrol edip “Güncelle”ye basın.`}
+            : `${r.barcodeChanges} barkod ve ${r.stockChanges} stok değişecek. Listeyi kontrol edip “${r.changes.length} numarayı güncelle”ye basın.`}
         </p>
       )}
 

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { getSyncState, getTrendyolStatus, runTrendyolSync } from "@/server/services/trendyol";
-import { deleteVariant } from "@/server/services/admin/catalog";
+import { adjustVariantStock, deleteVariant } from "@/server/services/admin/catalog";
+import { bulkUpdateVariants } from "@/server/services/admin/bulk-stock";
 import { AdminError } from "@/server/services/admin/context";
 import { reservedByVariant, returnStock } from "@/server/services/stock";
 import { TrendyolClient, TrendyolError, trendyolConfig } from "@/server/trendyol/client";
@@ -476,5 +477,102 @@ describe("senkron", () => {
     fake.prices.delete("SALE-40");
     await run(61 * 60_000);
     expect(await priceOf()).toBeNull();
+  });
+
+  describe("depo sayımı ile birlikte", () => {
+    async function adminCtx() {
+      const admin = await makeUser({ role: "admin" });
+      return { actorId: admin.id, ip: "10.0.0.1" };
+    }
+
+    test("eşleşmemiş, teslim edilmiş Trendyol siparişi barkod ve sayım girilince ikinci kez düşülmez (toplu)", async () => {
+      const ctx = await adminCtx();
+      const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 9 }] });
+      const v = variants[0]!;
+      await run();
+      fake.packages = [pkg("D1", "Delivered", [{ barcode: "X-40", quantity: 1 }], 90)];
+      await run();
+      expect((await getTrendyolStatus()).unmatched).toHaveLength(1);
+      const text = `${v.sku};X-40;5`;
+      const preview = await bulkUpdateVariants({ text, mode: "physical", note: "Sayım", apply: false }, ctx);
+      await bulkUpdateVariants({ text, mode: "physical", note: "Sayım", apply: true, fingerprint: preview.fingerprint }, ctx);
+      expect(await stockOf(v.id)).toBe(5);
+      fake.packages = [];
+      await run();
+      expect(await stockOf(v.id)).toBe(5);
+      expect((await getTrendyolStatus()).unmatched).toEqual([]);
+    });
+
+    test("kargolanmış ama stok yetmediği için düşülemeyen sipariş, sayımdan sonra düşülmez (tekil form)", async () => {
+      const ctx = await adminCtx();
+      const id = await variantWithBarcode(0);
+      await run();
+      fake.packages = [pkg("D2", "Shipped", [{ barcode: "8680000000001", quantity: 1 }], 91)];
+      await run();
+      expect((await getTrendyolStatus()).shortfalls).toHaveLength(1);
+      await adjustVariantStock(id, 4, "Sayım", ctx, { mode: "physical" });
+      expect(await stockOf(id)).toBe(4);
+      fake.packages = [];
+      await run();
+      expect(await stockOf(id)).toBe(4);
+      expect((await getTrendyolStatus()).shortfalls).toEqual([]);
+    });
+
+    test("kargolanmamış Trendyol siparişi sayımdan düşülür; sonra kargolanınca stok değişmez", async () => {
+      const ctx = await adminCtx();
+      const id = await variantWithBarcode(9);
+      await run();
+      const created = pkg("D3", "Created", [{ barcode: "8680000000001", quantity: 1 }], 92);
+      fake.packages = [created];
+      await run();
+      expect(await stockOf(id)).toBe(8);
+      // Depoda 6 çift sayıldı; biri Trendyol siparişine ayrılmış
+      const r = await adjustVariantStock(id, 6, "Sayım", ctx, { mode: "physical" });
+      expect(r).toMatchObject({ to: 5, reserved: 1 });
+      fake.packages = [{ ...created, status: "Shipped", lastModifiedDate: clock + 1 }];
+      await run();
+      expect(await stockOf(id)).toBe(5);
+    });
+
+    test("eşleşmemiş, kargolanmamış sipariş barkodla sayım girilince sayımdan düşülür ve bir daha düşülmez", async () => {
+      const ctx = await adminCtx();
+      const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 9 }] });
+      const v = variants[0]!;
+      await run();
+      fake.packages = [pkg("D4", "Picking", [{ barcode: "Y-40", quantity: 2 }], 93)];
+      await run();
+      const text = `${v.sku};Y-40;6`;
+      const preview = await bulkUpdateVariants({ text, mode: "physical", note: "Sayım", apply: false }, ctx);
+      await bulkUpdateVariants({ text, mode: "physical", note: "Sayım", apply: true, fingerprint: preview.fingerprint }, ctx);
+      expect(await stockOf(v.id)).toBe(4);
+      fake.packages = [];
+      await run();
+      expect(await stockOf(v.id)).toBe(4);
+    });
+  });
+
+  test("aynı adet art arda reddedildikçe yeniden deneme aralığı uzar; adet değişince hemen gönderilir", async () => {
+    const id = await variantWithBarcode(3, "YOK-TY");
+    const fail = () => fake.batchItems.set(`batch-${fake.posts.length}`, [{ barcode: "YOK-TY", status: "FAILED", reasons: ["Ürün bulunamadı"] }]);
+    await run();
+    fail();
+    await run(); // sonuç: reddedildi
+    let n = fake.posts.length;
+    await run(17 * 60_000); // 16 dk dolmuş: 1. yeniden deneme
+    expect(fake.posts.length).toBe(n + 1);
+    fail();
+    await run(); // yine reddedildi
+    n = fake.posts.length;
+    await run(17 * 60_000); // 32 dk dolmadı
+    expect(fake.posts.length).toBe(n);
+    await run(17 * 60_000); // doldu
+    expect(fake.posts.length).toBe(n + 1);
+    fail();
+    await run();
+    n = fake.posts.length;
+    await db.update(schema.variants).set({ stock: 2 }).where(eq(schema.variants.id, id));
+    await run();
+    expect(fake.posts.at(-1)).toEqual({ items: [{ barcode: "YOK-TY", quantity: 2 }] });
+    expect(fake.posts.length).toBe(n + 1);
   });
 });

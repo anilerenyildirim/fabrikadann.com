@@ -393,6 +393,8 @@ export const trendyolStockPush = pgTable("trendyol_stock_push", {
   batchRequestId: text("batch_request_id"),
   status: trendyolPushStatus("status").notNull(),
   error: text("error"),
+  // Aynı adet art arda reddedildikçe yeniden deneme aralığı uzar (ör. Trendyol'da olmayan barkod)
+  attempts: integer("attempts").notNull().default(0),
   pushedAt: timestamp("pushed_at", { withTimezone: true }).notNull(),
 });
 

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, pool, schema, type Tx } from "@/server/db";
 import { describeError } from "@/server/log";
 import { TrendyolError, trendyolConfig, type TrendyolClient, type TrendyolPackage } from "@/server/trendyol/client";
@@ -254,6 +254,18 @@ async function applyOrder(orderNumber: string, baselineAt: number | undefined, b
     const orderedAt = dates.length ? Math.min(...dates) : undefined;
     // Sipariş tarihi gelmediyse yalnızca ilk çalıştırmada eski sayılır
     const preexisting = orderedAt !== undefined && baselineAt !== undefined ? orderedAt < baselineAt : baselineRun;
+    // Kilit sırası: önce numaralar (kimlik sırasıyla), sonra sipariş kayıtları — depo sayımı ve ödeme akışıyla aynı
+    const preview = await tx.select().from(trendyolOrderStock).where(eq(trendyolOrderStock.orderNumber, orderNumber));
+    const lockIds = new Set<string>();
+    for (const r of preview) if (r.variantId) lockIds.add(r.variantId);
+    for (const b of wanted.keys()) {
+      if (preview.some((r) => r.barcode === b && r.variantId)) continue;
+      const v = await matchVariant(tx, b);
+      if (v) lockIds.add(v);
+    }
+    if (lockIds.size) {
+      await tx.select({ id: variants.id }).from(variants).where(inArray(variants.id, [...lockIds])).orderBy(asc(variants.id)).for("update");
+    }
     const existing = await tx
       .select()
       .from(trendyolOrderStock)
@@ -331,7 +343,8 @@ async function takeAvailable(tx: Tx, variantId: string, quantity: number, refere
 
 async function pushStock(deps: SyncDeps, now: Date) {
   const pushErrors: string[] = [];
-  const retryBefore = new Date(now.getTime() - RETRY_FAILED_MS);
+  // 16 dk, 32 dk, 64 dk … en fazla yaklaşık 17 saat
+  const retryDue = sql`${trendyolStockPush.pushedAt} + make_interval(secs => ${RETRY_FAILED_MS / 1000} * power(2, least(${trendyolStockPush.attempts}, 6))) < ${now}`;
   const sendQuantity = sql<number>`least(${variants.stock}, ${MAX_QUANTITY})`;
   // Barkodu olan numaralar: satılabilir stok, son gönderilenden farklıysa
   const live = await db
@@ -343,7 +356,7 @@ async function pushStock(deps: SyncDeps, now: Date) {
         isNotNull(variants.barcode),
         sql`(${trendyolStockPush.barcode} is null
           or ${trendyolStockPush.quantity} <> ${sendQuantity}
-          or (${trendyolStockPush.status} = 'failed' and ${trendyolStockPush.pushedAt} < ${retryBefore}))`,
+          or (${trendyolStockPush.status} = 'failed' and ${retryDue}))`,
       ),
     )
     .orderBy(asc(variants.id))
@@ -356,7 +369,7 @@ async function pushStock(deps: SyncDeps, now: Date) {
     .where(
       sql`not exists (select 1 from ${variants} where ${variants.barcode} = ${trendyolStockPush.barcode})
         and (${trendyolStockPush.quantity} <> 0
-          or (${trendyolStockPush.status} = 'failed' and ${trendyolStockPush.pushedAt} < ${retryBefore}))`,
+          or (${trendyolStockPush.status} = 'failed' and ${retryDue}))`,
     )
     .orderBy(asc(trendyolStockPush.barcode))
     .limit(PUSH_CHUNK * 5);
@@ -383,7 +396,14 @@ async function pushStock(deps: SyncDeps, now: Date) {
       await db
         .insert(trendyolStockPush)
         .values({ barcode: c.barcode, ...values })
-        .onConflictDoUpdate({ target: trendyolStockPush.barcode, set: values });
+        .onConflictDoUpdate({
+          target: trendyolStockPush.barcode,
+          set: {
+            ...values,
+            attempts: sql`case when ${trendyolStockPush.status} = 'failed' and ${trendyolStockPush.quantity} = excluded.quantity
+              then ${trendyolStockPush.attempts} + 1 else 0 end`,
+          },
+        });
     }
     pushed += chunk.length;
   }
@@ -431,7 +451,7 @@ async function checkPushResults(deps: SyncDeps, now: Date): Promise<number> {
         .update(trendyolStockPush)
         .set(
           r?.status === "SUCCESS"
-            ? { status: "ok", error: null }
+            ? { status: "ok", error: null, attempts: 0 }
             : { status: "failed", error: r?.reasons.join("; ").slice(0, 500) || "Trendyol sonucu alınamadı" },
         )
         .where(and(eq(trendyolStockPush.barcode, row.barcode), pending));

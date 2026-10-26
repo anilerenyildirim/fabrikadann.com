@@ -3,7 +3,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema, type DbOrTx } from "@/server/db";
 import { audit } from "../audit";
-import { reservedByVariant, setStock } from "../stock";
+import { physicalCountReserved, setStock } from "../stock";
 import { barcodeSchema, MAX_STOCK, noteSchema, skuSchema } from "./catalog";
 import { AdminError, assertAdmin, isUniqueViolation, type AdminContext } from "./context";
 
@@ -241,7 +241,7 @@ export async function bulkUpdateVariants(input: z.input<typeof bulkInputSchema>,
 
       const meta = { reason: "manual" as const, note, actorId: ctx.actorId };
       const stockRows = changes.filter((c) => c.stockValue !== undefined);
-      const reserved = mode === "physical" ? await reservedByVariant(tx, stockRows.map((c) => c.variantId)) : new Map<string, number>();
+      const reserved = mode === "physical" ? await physicalCountReserved(tx, stockRows.map((c) => c.variantId)) : new Map<string, number>();
       for (const c of stockRows) {
         // Depo sayımı: satılabilir = sayım − bekleyen siparişlerde ayrılmış
         const target = mode === "physical" ? Math.max(0, c.stockValue! - (reserved.get(c.variantId) ?? 0)) : c.stockValue!;

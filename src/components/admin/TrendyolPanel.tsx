@@ -15,7 +15,7 @@ export function trendyolProblems(s: TrendyolStatus, now = Date.now()): string[] 
   if (s.configError) problems.push(`Ayarlar hatalı: ${s.configError}`);
   if (!s.configured) return problems;
   const lastRun = s.state.lastRunAt ? Date.parse(s.state.lastRunAt) : null;
-  if (!lastRun) problems.push("Senkron henüz hiç çalışmadı. Zamanlanmış görevi kurun (npm run trendyol:sync).");
+  if (!lastRun) problems.push("Senkron henüz hiç çalışmadı. Zamanlanmış görevi kurun (canlıya alma belgesi §5c).");
   else if (now - lastRun > STALE_MS) problems.push(`Senkron ${formatDateTime(new Date(lastRun))} tarihinden beri çalışmadı. Zamanlanmış görevi kontrol edin.`);
   if (s.state.lastError) problems.push(`Son çalıştırmada hata: ${s.state.lastError}`);
   const summary = s.state.lastSummary;
@@ -174,7 +174,8 @@ export function TrendyolPanel({ status: s, syncAction }: { status: TrendyolStatu
                 </span>
               </div>
               <p className="break-words text-graphite">
-                {r.error ?? "Bilinmeyen hata"} · {formatDateTime(r.pushedAt)}. 15 dakika sonra yeniden denenir.
+                {r.error ?? "Bilinmeyen hata"} · {formatDateTime(r.pushedAt)}. Yeniden denenir; reddedildikçe aralık uzar. Ürün
+                Trendyol'da satılmıyorsa numaranın barkodunu silin.
               </p>
             </li>
           ))}

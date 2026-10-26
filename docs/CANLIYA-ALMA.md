@@ -113,7 +113,8 @@ Kurulum:
    `.env.production`'a yazın (bkz. §3), uygulamayı yeniden başlatın.
 2. **Açmadan önce** panelde her numaranın barkodunu girin ve sitedeki stoğu doğru yapın: satılabilir stok =
    depodaki adet − iki kanalda henüz kargolanmamış siparişler. Senkronun ilk çalıştığı andan önce verilmiş Trendyol
-   siparişleri stok değiştirmeden "zaten düşülmüş" kabul edilir (sonradan iptal edilirlerse adet stoğa döner);
+   siparişleri stok değiştirmeden "zaten düşülmüş" kabul edilir (son 13 günde değişmiş olanlar sonradan iptal
+   edilirse adet stoğa döner; daha eskiler için iptal stoğa elle eklenir);
    ilk çalıştırma sitedeki stoğu Trendyol'a gönderir (Trendyol'daki stok
    sitedekiyle değişir). Emin değilseniz ilk çalıştırmadan sonra Stok sayfasında "Depo sayımı" ile sayılan
    adedi girin; iki kanalın kargolanmamış siparişleri otomatik düşülür.
@@ -126,7 +127,11 @@ Kurulum:
 Panelde Stok sayfasının altındaki "Trendyol senkronu" bölümü (ve sorun varsa Pano) şunları gösterir:
 son çalıştırma ve hata, stok yetmeyen Trendyol siparişleri (aynı çift iki kanalda satıldıysa: birini iptal
 edin ya da stok ekleyin; stok gelince eksik adet kendiliğinden düşülür), hiçbir numarayla eşleşmeyen
-barkodlar ve Trendyol'un reddettiği stok gönderimleri (15 dakika sonra yeniden denenir).
+barkodlar ve Trendyol'un reddettiği stok gönderimleri (16 dakika sonra yeniden denenir; aynı adet reddedildikçe
+aralık uzar). Trendyol'da satılmayan ürünlerin numaralarına barkod girmeyin.
+
+Depo sayımı ("Depo sayımı" türüyle tek tek ya da toplu) o numaranın Trendyol kayıtlarını da kapatır: Trendyol'da
+kargolanmamış adetler sayımdan düşülür, kargolanmış ama henüz düşülmemiş siparişler sayıma göre düşülmüş kabul edilir.
 
 Önce test ortamında deneyin: `TRENDYOL_ENV=stage` ve test hesabı bilgileri (test ortamı için sunucunun
 çıkış IP'si Trendyol çağrı merkezine tanıtılmalı). Denenecekler §8'de.
@@ -152,6 +157,14 @@ Yedekler müşterilerin kişisel verisini içerir:
 - Bakım ve yedek günlükleri için logrotate tanımlayın (ör. haftalık, 4 kopya).
 
 ## 7. Güncelleme
+
+Trendyol senkronunu getiren güncellemeden (migration 0004) önce, aynı barkodun iki numarada olmadığını kontrol edin;
+varsa migration benzersizlik kuralında durur:
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file .env.production exec db psql -U fabrikadann fabrikadann -c "select barcode, count(*) from variants where barcode is not null group by barcode having count(*) > 1"
+```
+
 
 Yeni imajı yükleyin, migration'ları çalıştırın, uygulamayı yeniden başlatın:
 

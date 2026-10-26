@@ -101,6 +101,8 @@ export async function trendyolSyncNowAction(_prev: FormState, _form: FormData): 
     return { error: e instanceof Error ? e.message : "Trendyol ayarları hatalı." };
   }
   if (!cfg) return { error: "Trendyol bağlantısı tanımlı değil." };
+  // Çalıştırma uzun sürebilir ya da yarıda kalabilir: kimin başlattığı önceden kaydedilir
+  await audit({ action: "trendyol.sync_manual", actorId: ctx.actorId, ip: ctx.ip });
   let summary;
   try {
     summary = await runTrendyolSync({ client: new TrendyolClient(cfg) });
@@ -109,7 +111,6 @@ export async function trendyolSyncNowAction(_prev: FormState, _form: FormData): 
     return errorState(e, undefined, "trendyol-elle");
   }
   if (!summary) return { error: "Senkron şu an zaten çalışıyor; biraz sonra sayfayı yenileyin." };
-  await audit({ action: "trendyol.sync_manual", actorId: ctx.actorId, data: { ...summary }, ip: ctx.ip });
   revalidatePath("/", "layout");
   return {
     ok: true,
