@@ -92,17 +92,18 @@ test("fiziksel sayım bekleyen siparişlerdeki adetleri düşer; eski ekrandan s
   );
 });
 
-test("ödenmemiş siparişler bir numaranın stoğunun en fazla yarısını tutabilir", async () => {
-  const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 10 }] });
+test("bir IP'den ödenmemiş siparişler toplam 10 çifti geçemez; başka IP'deki müşteri etkilenmez", async () => {
+  const { variants } = await makeProduct({ sizes: [{ size: "40", stock: 30 }] });
   const v = variants[0]!.id;
-  const mk = (n: number, qty: number) =>
+  const mk = (n: number, qty: number, ip: string) =>
     addToCart({ guestToken: `h${n}` }, v, qty).then(() =>
-      createOrder({ guestToken: `h${n}` }, { email: `h${n}@x.com`, userId: null, address, ip: `10.0.0.${n}` }),
+      createOrder({ guestToken: `h${n}` }, { email: `h${n}@x.com`, userId: null, address, ip }),
     );
-  await mk(1, 3);
-  await mk(2, 2);
-  // 5 çift ödenmemiş siparişte: 10 çiftin yarısı doldu
-  await expect(mk(3, 1)).rejects.toMatchObject({ code: "reserved_by_others" });
+  await mk(1, 5, "10.0.0.1");
+  await mk(2, 5, "10.0.0.1");
+  await expect(mk(3, 1, "10.0.0.1")).rejects.toMatchObject({ code: "too_many_open_orders" });
+  // Gerçek müşteri, başkasının ödenmemiş ayırması yüzünden reddedilmez
+  await expect(mk(4, 5, "10.0.0.2")).resolves.toBeTruthy();
   const [row] = await db.select().from(schema.variants).where(eq(schema.variants.id, v));
-  expect(row!.stock).toBe(5);
+  expect(row!.stock).toBe(15);
 });

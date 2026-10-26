@@ -51,6 +51,18 @@ export async function applyRetention(now = new Date()) {
     .where(and(isNotNull(auditLog.ip), lt(auditLog.createdAt, ago(AUDIT_IP_RETENTION_DAYS))))
     .returning({ id: auditLog.id });
 
+  // Başarısız giriş kayıtlarındaki e-posta adresleri (hedef alanı) aynı sürede silinir
+  await db
+    .update(auditLog)
+    .set({ target: null })
+    .where(
+      and(
+        sql`${auditLog.action} like 'admin.login.%'`,
+        isNotNull(auditLog.target),
+        lt(auditLog.createdAt, ago(AUDIT_IP_RETENTION_DAYS)),
+      ),
+    );
+
   // Terk edilmiş misafir sepetleri
   const guestCarts = await db
     .delete(carts)

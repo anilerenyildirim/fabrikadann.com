@@ -78,6 +78,15 @@ bırakılır; yine de düzenli çalıştırın:
 */5 * * * * cd /srv/fabrikadann && docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/maintenance.ts >> /var/log/fabrikadann-bakim.log 2>&1
 ```
 
+## 5b. KVKK silme talebi
+
+Müşteri hesabını kapatıp kişisel verilerini silmek için (siparişler yasal süre boyunca saklanır):
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/delete-customer.ts musteri@ornek.com           # önizleme
+docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/delete-customer.ts musteri@ornek.com --onayla
+```
+
 ## 6. Yedekleme (zorunlu)
 
 Sipariş verisi en kritik varlıktır. Her gece veritabanı ve görseller yedeklenmeli. Komut önce geçici
