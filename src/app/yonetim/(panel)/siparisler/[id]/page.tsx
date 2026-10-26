@@ -40,7 +40,7 @@ export default async function OrderDetailPage({ params }: Props) {
         }
       />
 
-      <div className="grid gap-x-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 gap-x-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="min-w-0">
           <Section title="Ürünler">
             <ul className="border-t border-ink">

@@ -104,7 +104,7 @@ export default async function DashboardPage() {
         </Section>
       )}
 
-      <div className="mt-10 grid gap-x-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="mt-10 grid grid-cols-1 gap-x-12 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Section
           title="Son siparişler"
           actions={

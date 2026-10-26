@@ -86,13 +86,15 @@ export function TrendyolPanel({ status: s }: { status: TrendyolStatus }) {
         <List title="Stok yetmeyen Trendyol siparişleri">
           {s.shortfalls.map((r) => (
             <li key={`${r.orderNumber}-${r.barcode}`} className="py-2.5">
-              <span className="tabular">Trendyol {r.orderNumber}</span> ·{" "}
-              <Link href={`/yonetim/urunler/${r.productId}#numaralar`} className="underline underline-offset-4">
-                {r.productName}
-              </Link>{" "}
-              <span className="text-graphite">
-                {r.colorName} · {r.size} · {r.shortfall} adet eksik
-              </span>
+              <div className="flex flex-wrap items-center gap-x-2">
+                <span className="tabular">Trendyol {r.orderNumber}</span>
+                <Link href={`/yonetim/urunler/${r.productId}#numaralar`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+                  {r.productName}
+                </Link>
+                <span className="text-graphite">
+                  {r.colorName} · {r.size} · {r.shortfall} adet eksik
+                </span>
+              </div>
               <p className="text-graphite">
                 Siparişlerden birini iptal edin ya da stok ekleyin; stok gelince eksik adet otomatik düşülür.
               </p>
@@ -118,12 +120,14 @@ export function TrendyolPanel({ status: s }: { status: TrendyolStatus }) {
         <List title="Trendyol'a gönderilemeyen stoklar">
           {s.failedPushes.map((r) => (
             <li key={r.variantId} className="py-2.5">
-              <Link href={`/yonetim/urunler/${r.productId}#numaralar`} className="underline underline-offset-4">
-                {r.productName}
-              </Link>{" "}
-              <span className="text-graphite">
-                {r.colorName} · {r.size} · <span className="tabular">{r.barcode}</span>
-              </span>
+              <div className="flex flex-wrap items-center gap-x-2">
+                <Link href={`/yonetim/urunler/${r.productId}#numaralar`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+                  {r.productName}
+                </Link>
+                <span className="text-graphite">
+                  {r.colorName} · {r.size} · <span className="tabular">{r.barcode}</span>
+                </span>
+              </div>
               <p className="break-words text-graphite">
                 {r.error ?? "Bilinmeyen hata"} · {formatDateTime(r.pushedAt)}. Bir saat sonra yeniden denenir.
               </p>
