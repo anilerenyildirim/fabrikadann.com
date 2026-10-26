@@ -41,7 +41,9 @@ test("yeni hesap doğrulanana kadar giriş yapamaz; bağlantı tek kullanımlık
   if (!r.ok || !r.value.created) throw new Error("kayıt başarısız");
   const blocked = await attemptLogin("yeni@ornek.com", PW, "10.9.9.9");
   expect(blocked.ok).toBe(false);
-  if (!blocked.ok) expect(blocked.error).toMatch(/doğrulamadınız/);
+  // Yanlış parolayla aynı mesaj (hesabın varlığı anlaşılmasın)
+  const wrong = await attemptLogin("yeni@ornek.com", "Baska-Guclu-Parola-8", "10.9.9.8");
+  if (!blocked.ok && !wrong.ok) expect(blocked.error).toBe(wrong.error);
   const token = (await sendVerificationEmail(r.value.id, "http://x"))!;
   expect(await verifyEmail("uydurma")).toBeNull();
   expect(await verifyEmail(token)).toEqual({ id: r.value.id, role: "customer" });

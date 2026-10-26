@@ -46,6 +46,7 @@ export async function attemptLogin(email: string, password: string, ip: string):
     // Bu yanıt yalnızca doğru parolayı bilen birine görünür; bağlantı en fazla saatte 3 kez yeniden gönderilir
     const resend = await rateLimit(`dogrulama:${user.id}`, 3, 3600);
     if (resend.ok) await sendVerificationEmail(user.id, process.env.APP_URL ?? "http://localhost:3000");
+    // Yanıt yanlış parolayla AYNI: "kayıt ol + aynı parolayla giriş dene" ile hesabın varlığı anlaşılmasın
     return { ok: false, error: EMAIL_NOT_VERIFIED };
   }
   return { ok: true, user: { id: user.id, role: user.role } };

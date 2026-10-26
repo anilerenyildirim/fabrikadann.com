@@ -100,15 +100,17 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
     if (totalQuantity > MAX_ITEMS_PER_ORDER) {
       throw new OrderError("too_many_items", `Bir siparişte en fazla ${MAX_ITEMS_PER_ORDER} çift alınabilir.`);
     }
-    // Aynı IP'den eşzamanlı siparişler sıraya girsin ki sayım doğru olsun
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`siparis:${input.ip}`}))`);
+    // Aynı kişiden ya da IP'den eşzamanlı siparişler sıraya girsin ki sayım doğru olsun (kilit sırası sabit)
+    const lockKeys = [`siparis:ip:${input.ip}`, `siparis:kisi:${input.userId ?? input.email}`].sort();
+    for (const key of lockKeys) await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
     const openWhere = and(eq(orders.status, "awaiting_payment"), gt(orders.paymentExpiresAt, new Date()));
+    // Kişi: üyede hesap; misafirde e-posta + IP birlikte (doğrulanmamış e-postayla başkasının siparişi engellenemesin)
+    const person = input.userId
+      ? eq(orders.userId, input.userId)
+      : and(eq(orders.email, input.email), eq(orders.termsAcceptedIp, input.ip));
     const [open] = await tx
       .select({
-        byPerson: sql<number>`count(*) filter (where ${or(
-          eq(orders.email, input.email),
-          input.userId ? eq(orders.userId, input.userId) : undefined,
-        )})::int`,
+        byPerson: sql<number>`count(*) filter (where ${person})::int`,
         byIp: sql<number>`count(*) filter (where ${eq(orders.termsAcceptedIp, input.ip)})::int`,
       })
       .from(orders)
@@ -161,6 +163,8 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
     const crowded = sorted.filter((line) => {
       const stock = locked.find((v) => v.id === line.variantId)?.stock ?? 0;
       const h = held.get(line.variantId) ?? 0;
+      // Başka ödenmemiş ayırma yoksa müşteri stoktaki kadar alabilir; tavan yalnızca ayırmalar birikirken uygulanır
+      if (h === 0) return false;
       return h + line.quantity > Math.max(MIN_UNPAID_HOLD, Math.ceil((stock + h) * MAX_UNPAID_SHARE));
     });
     if (crowded.length > 0) {

@@ -33,8 +33,10 @@ test("aynı e-postayla en fazla 2, aynı IP'den en fazla 5 ödenmemiş sipariş"
       createOrder({ guestToken: `g${n}` }, { email, userId: null, address, ip }),
     );
   await mk(1, "6.6.6.6", "a@x.com");
-  await mk(2, "7.7.7.7", "a@x.com");
-  await expect(mk(3, "8.8.8.8", "a@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
+  await mk(2, "6.6.6.6", "a@x.com");
+  await expect(mk(3, "6.6.6.6", "a@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
+  // Misafir e-postası doğrulanmadığı için başka bir yerden aynı e-postayla verilen sipariş engellenmez
+  await expect(mk(4, "8.8.8.8", "a@x.com")).resolves.toBeTruthy();
   // Mobil operatörde aynı IP'yi paylaşan farklı müşteriler: 5'e kadar
   for (let i = 0; i < 5; i++) await mk(10 + i, "5.5.5.5", `kisi${i}@x.com`);
   await expect(mk(20, "5.5.5.5", "yeni@x.com")).rejects.toMatchObject({ code: "too_many_open_orders" });
