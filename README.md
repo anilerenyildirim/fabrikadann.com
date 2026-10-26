@@ -42,7 +42,8 @@ npm run e2e          # Playwright: telefon (Pixel 7) ve masaüstünde taşma, do
 ```
 
 Yönetim paneli sayfalarının taşma/dokunma testi yerel bir yönetici hesabıyla çalışır (tanımlı değilse atlanır):
-`E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_ADMIN_TOTP_SECRET` (create-admin'in yazdığı base32 anahtar).
+`E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_ADMIN_TOTP_SECRET` (create-admin'in yazdığı base32 anahtar);
+ortamdan ya da yerel `.env`'den okunur.
 
 ## Yapı
 
