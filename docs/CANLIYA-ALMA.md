@@ -33,13 +33,19 @@ gunzip -c fabrikadann.tar.gz | docker load
 NODE_ENV=production
 APP_URL=https://fabrikadann.com
 POSTGRES_PASSWORD=<uzun rastgele; yalnızca harf, rakam, - ve _ (URL'ye gömülür)>
-APP_DB_PASSWORD=<ayrı, uzun rastgele; uygulamanın kısıtlı veritabanı rolü için>
+APP_DB_PASSWORD=<ayrı, uzun rastgele; yalnızca harf, rakam, - ve _; uygulamanın kısıtlı veritabanı rolü için>
 SESSION_SECRET=<node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))">
 PAYMENT_PROVIDER=mock          # iyzico entegrasyonu eklenince: iyzico
 CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
 SMTP_URL=smtps://kullanici:parola@smtp.saglayici.com:465
 MAIL_FROM="fabrikadann <siparis@fabrikadann.com>"
 ```
+
+Notlar:
+- `SESSION_SECRET` aynı zamanda yönetici TOTP anahtarlarını şifreler. Değiştirirseniz her yönetici için
+  `scripts/create-admin.ts <e-posta> <ad> <soyad> --reset-totp` ile yeni anahtar kurun.
+- Kısıtlı veritabanı rolü (`deploy/db-init`) yalnızca veri klasörü boşken, ilk kurulumda oluşturulur.
+- Uygulama yalnızca Caddy arkasında çalıştırılmalı: istemci IP'si Caddy'nin yazdığı `X-Real-IP`'den okunur.
 
 `PAYMENT_PROVIDER=mock` canlıda yalnızca yönetici oturumuyla çalışır (müşteriler sahte ödemeyle
 sipariş tamamlayamaz). Gerçek satışa iyzico entegrasyonu eklenmeden başlanmamalıdır.
@@ -48,7 +54,9 @@ sipariş tamamlayamaz). Gerçek satışa iyzico entegrasyonu eklenmeden başlanm
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d db
-docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/migrate.ts
+# Migration sahip rolle çalışır; parola yalnızca bu komuta verilir, uygulama konteynerinde durmaz
+set -a; . ./.env.production; set +a
+docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm -e MIGRATION_DATABASE_URL="postgres://fabrikadann:${POSTGRES_PASSWORD}@db:5432/fabrikadann" app npx tsx scripts/migrate.ts
 docker compose -f deploy/docker-compose.prod.yml --env-file .env.production up -d
 # Yönetici hesabı (parola ve iki adımlı doğrulama anahtarı bir kez ekrana yazılır)
 docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/create-admin.ts siz@fabrikadann.com Ad Soyad
@@ -95,7 +103,7 @@ Yedekler müşterilerin kişisel verisini içerir:
 Yeni imajı yükleyin, migration'ları çalıştırın, uygulamayı yeniden başlatın:
 
 ```bash
-docker compose ... run --rm app npx tsx scripts/migrate.ts
+docker compose ... run --rm -e MIGRATION_DATABASE_URL="postgres://fabrikadann:${POSTGRES_PASSWORD}@db:5432/fabrikadann" app npx tsx scripts/migrate.ts
 docker compose ... up -d app
 ```
 

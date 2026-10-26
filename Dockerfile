@@ -12,7 +12,8 @@ RUN npm ci
 FROM ${NODE_IMAGE} AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# Playwright, Next'in isteğe bağlı eşi olarak "devOptional" kalır; canlıda gereksiz
+RUN npm ci --omit=dev && rm -rf node_modules/playwright node_modules/playwright-core node_modules/@playwright
 
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app

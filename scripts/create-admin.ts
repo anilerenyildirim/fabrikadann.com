@@ -7,7 +7,7 @@
 // Canlıda (Docker): docker compose ... run --rm app npx tsx scripts/create-admin.ts <e-posta> <ad> <soyad>
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { z } from "zod";
 import { db, pool, schema } from "@/server/db";
 import { hashPassword, passwordProblem } from "@/server/auth/password";
@@ -78,6 +78,9 @@ async function unlockAccount() {
   });
   if (!user || user.role !== "admin") fail(`${email} adresinde yönetici hesabı yok.`);
   await clearRateLimit(`yonetim-giris:eposta:${email}`);
+  // E-posta + IP kovaları (her IP için ayrı anahtar)
+  await db.delete(schema.rateLimits).where(like(schema.rateLimits.key, `yonetim-giris:eposta-ip:${email}:%`));
+  await db.delete(schema.rateLimits).where(like(schema.rateLimits.key, `giris:eposta-ip:${email}:%`));
   await clearRateLimit(`giris:eposta:${email}`);
   await clearRateLimit(`totp:${user.id}`);
   await clearRateLimit(`totp:gun:${user.id}`);

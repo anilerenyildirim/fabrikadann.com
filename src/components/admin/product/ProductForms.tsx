@@ -254,12 +254,13 @@ export function StockAdjustForm({
           <select
             id={`${id}-tur`}
             name="mode"
-            defaultValue={state.ok ? "available" : (state.values?.mode ?? "available")}
+            // Varsayılan depo sayımı: bekleyen siparişlerde ayrılmış adetler otomatik düşülür (aşırı satış olmaz)
+            defaultValue={state.ok ? "physical" : (state.values?.mode ?? "physical")}
             className="min-h-11 rounded-none border-0 border-b border-ash bg-transparent py-2 pr-1 text-[0.8125rem] outline-none focus:border-ink focus:shadow-[0_1px_0_0_var(--color-ink)]"
             title={reserved > 0 ? `Bekleyen siparişlerde ${reserved} adet ayrılmış` : undefined}
           >
-            <option value="available">Satılabilir</option>
             <option value="physical">Depo sayımı</option>
+            <option value="available">Satılabilir</option>
           </select>
         </div>
         <SmallField

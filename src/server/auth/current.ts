@@ -66,6 +66,8 @@ export async function requireAdmin() {
  * CLIENT_IP_HEADER ile vekilin yazdığı başlık seçilir; varsayılan X-Forwarded-For'un
  * en sağdaki değeri (bizim vekilimizin eklediği, istemcinin uyduramayacağı değer).
  */
+let warnedMissingIpHeader = false;
+
 async function rawClientIp(): Promise<string | null> {
   const h = await headers();
   // Canlıda varsayılan, ters vekilin (Caddy) yazdığı X-Real-IP; X-Forwarded-For istemci tarafından uydurulabilir
@@ -73,7 +75,14 @@ async function rawClientIp(): Promise<string | null> {
     process.env.CLIENT_IP_HEADER?.toLowerCase() ||
     (process.env.NODE_ENV === "production" ? "x-real-ip" : "x-forwarded-for");
   const raw = h.get(name);
-  if (!raw) return null;
+  if (!raw) {
+    // Canlıda başlık yoksa uygulama Caddy arkasında çalışmıyor demektir: tüm istekler tek kovaya düşer
+    if (process.env.NODE_ENV === "production" && !warnedMissingIpHeader) {
+      warnedMissingIpHeader = true;
+      console.error(`[güvenlik] İstemci IP başlığı (${name}) yok; uygulama ters vekil (Caddy) arkasında çalışmalı.`);
+    }
+    return null;
+  }
   const parts = raw.split(",").map((p) => p.trim()).filter(Boolean);
   return (name === "x-forwarded-for" ? parts.at(-1) : parts[0]) ?? null;
 }
