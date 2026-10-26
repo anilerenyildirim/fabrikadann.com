@@ -41,6 +41,9 @@ npm run e2e          # Playwright: telefon (Pixel 7) ve masaüstünde taşma, do
                      # misafir satın alma, yönetim koruması — sistemdeki Chrome'u kullanır
 ```
 
+Yönetim paneli sayfalarının taşma/dokunma testi yerel bir yönetici hesabıyla çalışır (tanımlı değilse atlanır):
+`E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_ADMIN_TOTP_SECRET` (create-admin'in yazdığı base32 anahtar).
+
 ## Yapı
 
 | Yol | İçerik |
@@ -64,5 +67,6 @@ Gerçek satıştan önce: iyzico anlaşması ve sandbox ile uçtan uca deneme, y
 kontrolü, şirket bilgilerinin panelden girilmesi, gerçek ürün fotoğrafları, SMTP. Ayrıntılı liste:
 [`docs/CANLIYA-ALMA.md`](docs/CANLIYA-ALMA.md) §8.
 
-Sonraki adımlar: Trendyol stok senkronu (stok hareketleri `source` ile kaydediliyor; ortak stok için
-altyapı hazır), mobil uygulama API'si, e-fatura.
+Trendyol ortak stok senkronu hazır (siparişler stoktan düşülür, iptaller geri konur, stok Trendyol'a
+gönderilir; kurulum: [`docs/CANLIYA-ALMA.md`](docs/CANLIYA-ALMA.md) §5c). Barkod ve stok, Stok sayfasından
+toplu yapıştırılabilir. Sonraki adımlar: mobil uygulama API'si, e-fatura.
