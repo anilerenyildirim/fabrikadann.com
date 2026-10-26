@@ -11,7 +11,7 @@ derlemeye (`NODE_ENV=production`) ve geliştirme sunucusuna karşı koşuldu. He
 |---|---|---|---|
 | 1 — Çekirdek | Kimlik doğrulama, sipariş/stok/ödeme, depolama, HTTP yüzeyi, dağıtım | 32 (1 yüksek, 10 orta, 21 düşük) | Hepsi kapatıldı |
 | 2 — Tam site | 5 boyut: yetkilendirme, iş mantığı, girdi/çıktı, HTTP/yapılandırma, bağımlılık/KVKK | 15 (hepsi düşük) | Hepsi kapatıldı |
-| 3 — Gerileme + yeni açılar | Önceki düzeltmelerin doğrulanması, e-posta doğrulama akışı, yönetim paneli, yarış koşulları, kırmızı takım | bkz. §3 | bkz. §3 |
+| 3 — Gerileme + yeni açılar | 49 gerileme kontrolü; e-posta doğrulama akışı, yönetim paneli, yarış koşulları, kırmızı takım | 15 yeni (3 orta, 12 düşük) + 6 açık kontrol | Hepsi kapatıldı |
 
 Kritik ya da yüksek önemli bir açık şu anda bilinmiyor. Tek yüksek önemli bulgu (yedekleme komutunun
 sessizce boş dosya üretmesi) kod dışı bir işletme hatasıydı ve düzeltildi.
@@ -75,7 +75,42 @@ veritabanı rolü (F13'ün kalan parçası) ve tahmin edilebilir parola kurallar
 
 ## 3. tur — gerileme ve yeni açılar
 
-_(Bu bölüm 3. tur tamamlanınca dolduruldu; aşağıya bakın.)_
+**Gerileme:** Önceki iki turun düzeltmeleri 49 ayrı kontrolle yeniden denendi. 43'ü kapalı bulundu.
+Açık kalan altı kontrol aşağıdaki düzeltmelerle kapatıldı:
+
+| Kontrol | Sorun | Düzeltme |
+|---|---|---|
+| AUTH-09 / AUTH-ENUM-01 | Kayıt + aynı parolayla giriş zinciri hesabın varlığını yine gösteriyordu | Doğrulanmamış hesap da yanlış parolayla aynı mesajı alır |
+| AUTH-10 / F1 | Ters vekil olmadan çalıştırılırsa istemci IP başlığını kendisi yazabilir | Canlıda başlık yoksa uyarı logu; belgede "yalnızca Caddy arkasında" kuralı. Kalıntı riskler bölümünde |
+| A04-LOW-1 | %50 tavanı gerçek müşteriyi reddedebiliyordu | Tavan kaldırıldı; IP başına ödenmemiş toplam 10 çift |
+| KVKK-1 | Başarısız giriş kayıtlarındaki e-postalar ve silme talebi aracı eksikti | 1 yıl sonra silinir; `scripts/delete-customer.ts` |
+
+**Yeni bulgular:** 18 aday, 15'i doğrulandı (3 orta, 12 düşük). Hepsi kapatıldı:
+
+| Kimlik | Önem | Bulgu | Düzeltme |
+|---|---|---|---|
+| ACC-ENUM-01 / NEW-ENUM-LOGIN | Orta | Kayıt + giriş zinciriyle numaralandırma | Tek tip giriş mesajı |
+| STK-CAP-1 | Orta | %50 tavanı tek müşterinin 4–5 çift almasını engelliyordu | IP başına ödenmemiş çift sınırı |
+| PAY-REC-1 | Orta | Mutabakat taraması terk edilmiş oturumlarla tıkanabiliyordu | En yeniden başlar; 6 saatte sonuçlanmayan oturum kapanır |
+| YARIS-01 | Düşük | Kişi başına açık sipariş sınırı farklı IP'lerden eşzamanlı isteklerle aşılabiliyordu | Kişi ve IP için ayrı advisory kilit |
+| ORD-EMAIL-1 | Düşük | Başkasının e-postasıyla 2 sipariş açıp o müşteriyi engelleme | Misafirde kişi = e-posta + IP; üyede hesap |
+| ACC-VERIFY-02 | Düşük | Doğrulama bağlantısı 48 saatlik parolasız girişti | Bağlantı yalnızca etkinleştirir; parola sıfırlama bekleyen bağlantıları siler |
+| NEW-KVKK-4 | Düşük | Doğrulanmamış hesaplar ve bağlantılar imha edilmiyordu | 7 gün sonra silinir (siparişi olmayanlar) |
+| NEW-UNLOCK-EMAILIP | Düşük | `--unlock` yeni kovaları temizlemiyordu | Temizler |
+| NEW-DB-1 | Düşük | Uygulama konteynerinde süper kullanıcı parolası vardı | Yalnızca gerekli değişkenler; migration parolası yalnızca migrate komutunda |
+| NEW-DB-2 | Düşük | `APP_DB_PASSWORD` karakter kuralı belgelenmemişti | Belgelendi |
+| NEW-DEP-2 | Düşük | Canlı imajda Playwright vardı | Çıkarıldı |
+| NEW-SECRET-ROTATION | Düşük | `SESSION_SECRET` değişince TOTP anahtarları çözülemiyordu (belgesizdi) | Belgelendi (`--reset-totp`) |
+| STK-UX-1 | Düşük | Stok formunun varsayılan kipi aşırı satışa açıktı | Varsayılan "Depo sayımı" |
+| ACC-LIFECYCLE-03 | Düşük | KVKK silme talebi yalnızca elle SQL'le karşılanabiliyordu | `scripts/delete-customer.ts` |
+
+Reddedilen 3 aday: alt metin uzunluk tutarsızlığı (yalnızca katman farkı), prefetch başlığıyla CSP
+"atlatması" (prefetch yanıtı yürütülebilir sayfa değil) ve arama uç noktası (sorgu küçük katalogda ucuz;
+kontrol karakterleri temizleniyor).
+
+**Son doğrulama (06:00 öncesi):** 195 birim ve servis testi, 22 uçtan uca test (telefon ve masaüstü),
+canlı derleme ve Docker imajı. İmajda `.env` ve geliştirme bağımlılıkları olmadığı, sürecin root olmayan
+kullanıcıyla çalıştığı ve kodun salt okunur olduğu doğrulandı.
 
 ## Kabul edilen kalıntı riskler
 
@@ -85,8 +120,14 @@ _(Bu bölüm 3. tur tamamlanınca dolduruldu; aşağıya bakın.)_
   eklenebilir.
 - **Docker dışında derleme:** `next build`, `.env`'i standalone paketine kopyalar. Bu yüzden yalnızca Docker
   içinde derleme yapılmalı (belgede yazıyor; `.dockerignore` `.env`'i dışarıda bırakır).
-- **Çok düşük stoklu numaralar:** 3 çift ve altındaki stok, ödenmemiş siparişlerle geçici olarak
-  (30 dk) kilitlenebilir. Tamamen önlemek bot korumasıyla (ör. Cloudflare Turnstile) mümkün.
+- **Dağıtık stok kilitleme:** Çok sayıda IP adresi kullanan bir saldırgan, ödenmemiş siparişlerle stoğu
+  geçici olarak (30 dk) kilitleyebilir. Tek bir IP en fazla 10 çift tutabilir. Tamamen önlemek bot
+  korumasıyla (ör. Cloudflare Turnstile) mümkün.
+- **Ters vekilsiz çalıştırma:** Uygulama doğrudan internete açılırsa (Caddy olmadan) istemci IP başlığını
+  kendisi yazabilir ve IP tabanlı sınırlar zayıflar. Desteklenen kurulum yalnızca Caddy arkası; başlık
+  yoksa canlıda uyarı loglanır.
+- **Yönetici kilitleme:** Yöneticinin parolasını bilen biri, günlük TOTP deneme hakkını tüketerek yöneticiyi
+  24 saat dışarıda tutabilir. Kurtarma: `create-admin --unlock` ve parola değişikliği.
 
 ## Canlıya çıkmadan önce (güvenlikle ilgili)
 
