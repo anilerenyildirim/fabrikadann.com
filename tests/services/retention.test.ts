@@ -49,3 +49,15 @@ test("eski güvenlik kayıtlarındaki IP ve kullanılmış sıfırlama bağlant�
   expect(result.resetTokens).toBe(2);
   expect((await db.select().from(schema.auditLog))[0]!.ip).toBeNull();
 });
+
+test("7 günde doğrulanmayan ve siparişi olmayan üyelik silinir; doğrulanmış olana dokunulmaz", async () => {
+  const { registerCustomer } = await import("@/server/services/accounts");
+  const r = await registerCustomer({ email: "dogrulanmadi@ornek.com", password: "Kuvvetli-Parola-42", firstName: "A", lastName: "B" });
+  if (!r.ok || !r.value.created) throw new Error("kayıt");
+  const verified = await makeUser();
+  expect((await applyRetention()).unverifiedAccounts).toBe(0);
+  const result = await applyRetention(new Date(Date.now() + 8 * DAY));
+  expect(result.unverifiedAccounts).toBe(1);
+  const left = await db.select().from(schema.users);
+  expect(left.map((u) => u.id)).toEqual([verified.id]);
+});

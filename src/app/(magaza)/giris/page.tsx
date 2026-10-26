@@ -30,6 +30,9 @@ export default async function LoginPage({ searchParams }: Props) {
         <AccountHeader title="Giriş yap" />
         <div className="flex flex-col gap-6">
           {reset && <FormNotice tone="info">Parolanız değişti, yeni parolanızla giriş yapın.</FormNotice>}
+          {params.dogrulandi === "1" && (
+            <FormNotice tone="info">E-posta adresiniz doğrulandı. Hesabınıza giriş yapabilirsiniz.</FormNotice>
+          )}
           <LoginForm returnTo={carry} />
         </div>
       </section>

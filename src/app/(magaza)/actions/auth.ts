@@ -92,12 +92,12 @@ export async function verifyEmailAction(_prev: FormState, form: FormData): Promi
           "Bağlantı geçersiz, kullanılmış ya da süresi dolmuş. Giriş yapmayı deneyin; hesabınız doğrulanmamışsa yeni bağlantı gönderilir.",
       };
     }
-    await startSession(user);
+    // Bağlantı yalnızca hesabı etkinleştirir, oturum açmaz: sızan bir bağlantı parolasız giriş sağlamasın
   } catch (e) {
     logError("[dogrula]", e);
     return { error: GENERIC_ERROR };
   }
-  redirect("/hesabim?dogrulandi=1");
+  redirect("/giris?dogrulandi=1");
 }
 
 export async function forgotPasswordAction(_prev: FormState, form: FormData): Promise<FormState> {

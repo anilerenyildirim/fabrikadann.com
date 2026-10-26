@@ -197,6 +197,8 @@ export async function resetPassword(token: string, newPassword: string): Promise
     .set({ passwordHash: await hashPassword(newPassword), emailVerifiedAt: user.emailVerifiedAt ?? new Date() })
     .where(eq(schema.users.id, user.id));
   await deleteUserSessions(user.id);
+  // Bekleyen doğrulama bağlantıları da geçersiz (sızmış bir bağlantı sıfırlamadan sonra işe yaramasın)
+  await db.delete(schema.emailVerificationTokens).where(eq(schema.emailVerificationTokens.userId, user.id));
   return { ok: true, value: null };
 }
 

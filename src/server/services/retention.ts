@@ -1,13 +1,14 @@
 import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 
-const { orders, passwordResetTokens, auditLog, carts } = schema;
+const { orders, passwordResetTokens, emailVerificationTokens, auditLog, carts, users } = schema;
 
 const DAY = 24 * 60 * 60 * 1000;
 /** KVKK aydınlatma metnindeki süreler (src/app/(magaza)/(kurumsal)/kvkk) ile aynı olmalı */
 export const UNPAID_ORDER_RETENTION_DAYS = 30;
 export const AUDIT_IP_RETENTION_DAYS = 365;
 export const GUEST_CART_RETENTION_DAYS = 60;
+export const UNVERIFIED_ACCOUNT_RETENTION_DAYS = 7;
 
 export const ANONYMIZED_EMAIL_DOMAIN = "silindi.invalid";
 
@@ -56,8 +57,29 @@ export async function applyRetention(now = new Date()) {
     .where(and(isNull(carts.userId), lt(carts.updatedAt, ago(GUEST_CART_RETENTION_DAYS))))
     .returning({ id: carts.id });
 
+  // Kullanılmış ya da süresi dolmuş e-posta doğrulama bağlantıları
+  const verifyTokens = await db
+    .delete(emailVerificationTokens)
+    .where(or(isNotNull(emailVerificationTokens.usedAt), lt(emailVerificationTokens.expiresAt, ago(1))))
+    .returning({ id: emailVerificationTokens.idHash });
+
+  // Doğrulanmadan bırakılmış, siparişi olmayan müşteri hesapları
+  const unverified = await db
+    .delete(users)
+    .where(
+      and(
+        eq(users.role, "customer"),
+        isNull(users.emailVerifiedAt),
+        lt(users.createdAt, ago(UNVERIFIED_ACCOUNT_RETENTION_DAYS)),
+        sql`not exists (select 1 from ${orders} where ${orders.userId} = ${users.id})`,
+      ),
+    )
+    .returning({ id: users.id });
+
   return {
     resetTokens: resetTokens.length,
+    verifyTokens: verifyTokens.length,
+    unverifiedAccounts: unverified.length,
     anonymizedOrders: anonymized.length,
     auditIps: auditIps.length,
     guestCarts: guestCarts.length,

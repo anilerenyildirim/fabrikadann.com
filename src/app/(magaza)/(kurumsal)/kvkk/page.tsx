@@ -140,7 +140,8 @@ export default async function KvkkPage() {
         süreleri) saklanır; bu süreler dolduğunda silinir, yok edilir ya da anonim hale getirilir. Ödemesi
         tamamlanmadığı için iptal edilen siparişlerdeki kişisel veriler 30 gün sonra anonim hale getirilir; güvenlik
         kayıtlarındaki IP adresleri 1 yıl sonra silinir; parola sıfırlama bağlantıları kullanıldıktan ya da süresi
-        dolduktan sonra silinir. Hesabınızı
+        dolduktan sonra silinir; 7 gün içinde e-posta adresi doğrulanmayan ve siparişi olmayan üyelikler silinir.
+        Hesabınızı
         kapatmak isterseniz bize yazabilirsiniz; yasal saklama yükümlülüğü bulunan kayıtlar dışındaki verileriniz
         silinir.
       </p>

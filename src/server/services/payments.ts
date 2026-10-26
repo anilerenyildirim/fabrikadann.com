@@ -1,5 +1,5 @@
 import { logError } from "@/server/log";
-import { and, eq, gt, isNotNull, lt } from "drizzle-orm";
+import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { randomToken } from "@/server/auth/crypto";
 import { getPaymentProvider } from "@/server/payments";
@@ -11,6 +11,9 @@ import { OrderError, tryReviveCancelledOrder } from "./orders";
 const { orders, payments } = schema;
 
 export class PaymentError extends Error {}
+
+/** Sonuçlanmayan sağlayıcı oturumunun terk edilmiş sayılacağı süre */
+const ABANDON_AFTER_MS = 6 * 60 * 60 * 1000;
 
 /** Bekleyen bir sipariş için yeni ödeme denemesi açar ve sağlayıcının yönlendirme adresini döner. */
 export async function startPayment(orderId: string, ctx: { appUrl: string; ip: string }) {
@@ -184,18 +187,32 @@ export async function reconcilePendingPayments(
   lookup: (providerSession: string) => Promise<PaymentOutcome | null>,
   provider: string,
 ): Promise<number> {
+  const now = Date.now();
+  // Terk edilmiş oturumlar (müşteri ödeme sayfasını açıp hiç ödemedi) 6 saat sonra kapatılır;
+  // böylece tarama sınırı eski kayıtlarla dolup yeni ödemeleri bekletmez
+  await db
+    .update(payments)
+    .set({ status: "failed", raw: { abandoned: true } })
+    .where(
+      and(
+        eq(payments.provider, provider),
+        eq(payments.status, "pending"),
+        lt(payments.createdAt, new Date(now - ABANDON_AFTER_MS)),
+      ),
+    );
   const pending = await db
-    .select({ providerSession: payments.providerSession })
+    .select({ id: payments.id, providerSession: payments.providerSession, createdAt: payments.createdAt })
     .from(payments)
     .where(
       and(
         eq(payments.provider, provider),
         eq(payments.status, "pending"),
         isNotNull(payments.providerSession),
-        lt(payments.createdAt, new Date(Date.now() - 2 * 60 * 1000)),
-        gt(payments.createdAt, new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)),
+        lt(payments.createdAt, new Date(now - 2 * 60 * 1000)),
       ),
     )
+    // En yeniler önce: para çekilmiş olabilecek güncel ödemeler gecikmesin
+    .orderBy(desc(payments.createdAt))
     .limit(200);
   let settled = 0;
   for (const { providerSession } of pending) {

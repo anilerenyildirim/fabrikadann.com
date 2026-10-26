@@ -61,6 +61,7 @@ export async function makeUser(input: { email?: string; role?: "customer" | "adm
       firstName: "Test",
       lastName: `Kullanıcı ${n}`,
       role: input.role ?? "customer",
+      emailVerifiedAt: new Date(),
     })
     .returning();
   return user!;
