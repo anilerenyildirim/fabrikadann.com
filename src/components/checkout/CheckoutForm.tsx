@@ -252,6 +252,15 @@ export function CheckoutForm({ signedInEmail, addresses, canSaveAddress, prefill
               Ödenecek tutar <span className="tabular text-ink">{totalText}</span>. Sonraki adımda ödeme sayfasına
               yönlendirileceksiniz.
             </p>
+            {/* iyzico'nun zorunlu tuttuğu resmî logo; renkleri değiştirilmez */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- sabit SVG */}
+            <img
+              src="/brand/iyzico/iyzico-ile-ode.svg"
+              alt="iyzico ile öde"
+              width={210}
+              height={31}
+              className="mt-5 h-6 w-auto"
+            />
           </div>
         </section>
       </div>

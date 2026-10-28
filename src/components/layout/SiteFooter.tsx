@@ -37,6 +37,16 @@ export function SiteFooter({ settings }: { settings: Settings }) {
           </p>
         </div>
       </div>
+      {/* iyzico'nun zorunlu tuttuğu resmî logo bandı (kart logolarıyla); renkleri değiştirilmez */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- sabit SVG */}
+      <img
+        src="/brand/iyzico/logo-band.svg"
+        alt="iyzico ile öde, Mastercard, Visa, American Express, Troy"
+        width={429}
+        height={32}
+        loading="lazy"
+        className="mt-12 h-6 w-auto max-w-full sm:h-7"
+      />
       <Wordmark className="mt-16 h-auto w-full text-ink" title="fabrikadann" />
       <p className="label mt-6 text-ash">
         © {new Date().getFullYear()} {settings.companyName || "fabrikadann"}

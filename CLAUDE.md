@@ -24,7 +24,7 @@ Ayakkabı e-ticaret sitesi. Spec: `docs/superpowers/specs/2026-10-25-magaza-v1-d
 
 ## Kurallar
 
-- **Renk:** yalnızca Tailwind tema renkleri `ink` (#000), `paper` (#fff), `graphite`, `ash`, `rule`, `fog`, `night`. Başka renk yok — hata durumları dahil (hata: siyah metin + `ErrorMark` simgesi + kalın alt çizgi).
+- **Renk:** yalnızca Tailwind tema renkleri `ink` (#000), `paper` (#fff), `graphite`, `ash`, `rule`, `fog`, `night`. Başka renk yok — hata durumları dahil (hata: siyah metin + `ErrorMark` simgesi + kalın alt çizgi). Tek istisna `public/brand/iyzico/` altındaki resmî iyzico/kart logoları (ödeme kuruluşu şartı; renkleri değiştirilmez).
 - **Tipografi:** Archivo. Başlık/etiket: `.wide` (geniş, aralıklı büyük harf) ya da `.label` (küçük büyük harf). Fiyatlar `.tabular`. Metin cümle düzeninde.
 - **Bileşenler:** `@/components/ui/form` (Button, ButtonLink, TextField, SelectField, TextArea, Checkbox, FormNotice), `ProductImage`, `Price`, `AddressFields`, `@/components/brand/Logo`.
 - **Dokunma hedefleri:** tıklanabilir her şey en az 44px yüksek (`min-h-11`). 360px genişlikte yatay kaydırma olmamalı.
