@@ -152,7 +152,23 @@ export default async function ProductPage({ params, searchParams }: Props) {
                     </Link>
                   </p>
                 </Disclosure>
+                <Disclosure title="Ödeme güvencesi">
+                  <p>
+                    Ödemeleriniz iyzico güvencesiyle alınır. Kart bilgileriniz iyzico&apos;nun güvenli ödeme sayfasında
+                    işlenir; sitemizde saklanmaz.
+                  </p>
+                  <p>Kartınıza göre 3D Secure doğrulaması yapılır, uygun kartlarda taksit seçenekleri sunulur.</p>
+                </Disclosure>
               </div>
+              {/* iyzico'nun zorunlu tuttuğu resmî logo bandı; renkleri değiştirilmez */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- sabit SVG */}
+              <img
+                src="/brand/iyzico/logo-band.svg"
+                alt="iyzico ile öde, Mastercard, Visa, American Express, Troy"
+                width={429}
+                height={32}
+                className="mt-6 h-6 w-auto max-w-full"
+              />
             </div>
           </div>
 
