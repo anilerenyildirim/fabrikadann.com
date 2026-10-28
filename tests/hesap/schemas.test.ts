@@ -181,6 +181,11 @@ describe("şirket bilgileri", () => {
     expect(isFilled(c.email)).toBe(true);
   });
 
+  test("boş MERSİS yer tutucu olmadan boş kalır", () => {
+    expect(companyInfo({ ...defaultSettings, mersisNumber: " " }).mersis).toBe("");
+    expect(companyInfo({ ...defaultSettings, mersisNumber: "0123456789000015" }).mersis).toBe("0123456789000015");
+  });
+
   test("dolu ayarlar olduğu gibi kullanılır", () => {
     const c = companyInfo({ ...defaultSettings, companyName: "Fabrikadan Ltd. Şti.", phone: "0212 555 00 00" });
     expect(c.name).toBe("Fabrikadan Ltd. Şti.");

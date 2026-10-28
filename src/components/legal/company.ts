@@ -34,7 +34,8 @@ export function companyInfo(s: Settings): CompanyInfo {
     address: pick(s.companyAddress, "Şirket adresi"),
     taxOffice: pick(s.taxOffice, "Vergi dairesi"),
     taxNumber: pick(s.taxNumber, "Vergi numarası"),
-    mersis: pick(s.mersisNumber, "MERSİS numarası"),
+    // MERSİS her işletmede yok (şahıs işletmesi); boşsa yer tutucu değil, hiç gösterilmez
+    mersis: s.mersisNumber.trim(),
     email: pick(s.email, "E-posta adresi"),
     phone: pick(s.phone, "Telefon numarası"),
     kep: pick(s.kepAddress, "KEP adresi"),

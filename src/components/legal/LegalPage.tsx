@@ -49,7 +49,7 @@ export function CompanyDetails({ company, include }: { company: CompanyInfo; inc
     { key: "taxNumber", label: "Vergi numarası", value: company.taxNumber },
     { key: "mersis", label: "MERSİS numarası", value: company.mersis },
   ];
-  const shown = include ? rows.filter((r) => include.includes(r.key)) : rows;
+  const shown = (include ? rows.filter((r) => include.includes(r.key)) : rows).filter((r) => r.value !== "");
   return (
     <dl className="mb-4 border-t border-rule text-[0.875rem]">
       {shown.map((r) => (
