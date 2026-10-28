@@ -29,7 +29,7 @@ export const defaultSettings: Settings = {
   taxOffice: "",
   taxNumber: "",
   mersisNumber: "",
-  email: "destek@fabrikadann.com",
+  email: "info@fabrikadann.com",
   phone: "",
   kepAddress: "",
   instagramUrl: "https://instagram.com/fabrikadann",

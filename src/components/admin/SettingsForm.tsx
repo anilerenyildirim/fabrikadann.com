@@ -106,7 +106,7 @@ export function SettingsForm({ action, initial }: { action: FormAction; initial:
         />
         <TextField label="KEP adresi" name="kepAddress" maxLength={200} defaultValue={v("kepAddress")} error={e.kepAddress} />
         <TextField
-          label="Destek e-postası"
+          label="İletişim e-postası"
           name="email"
           type="email"
           inputMode="email"
