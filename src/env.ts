@@ -8,7 +8,7 @@ const schema = z.object({
   PAYMENT_PROVIDER: z.enum(["mock", "iyzico"]).default("mock"),
   UPLOAD_DIR: z.string().default("./uploads"),
   SMTP_URL: z.string().optional(),
-  MAIL_FROM: z.string().default("fabrikadann <satis@fabrikadann.com>"),
+  MAIL_FROM: z.string().default("fabrikadann <info@fabrikadann.com>"),
 });
 
 export type Env = z.infer<typeof schema>;

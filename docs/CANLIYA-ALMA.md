@@ -38,7 +38,7 @@ SESSION_SECRET=<node -e "console.log(require('crypto').randomBytes(32).toString(
 PAYMENT_PROVIDER=mock          # iyzico entegrasyonu eklenince: iyzico
 CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
 SMTP_URL=smtps://kullanici:parola@smtp.saglayici.com:465
-MAIL_FROM="fabrikadann <satis@fabrikadann.com>"
+MAIL_FROM="fabrikadann <info@fabrikadann.com>"
 # Trendyol ortak stok (isteğe bağlı; bkz. §5c)
 TRENDYOL_SELLER_ID=
 TRENDYOL_API_KEY=

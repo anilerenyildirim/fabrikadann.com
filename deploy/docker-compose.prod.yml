@@ -37,7 +37,7 @@ services:
       TRENDYOL_API_SECRET: ${TRENDYOL_API_SECRET:-}
       TRENDYOL_ENV: ${TRENDYOL_ENV:-prod}
       SMTP_URL: ${SMTP_URL:-}
-      MAIL_FROM: ${MAIL_FROM:-fabrikadann <satis@fabrikadann.com>}
+      MAIL_FROM: ${MAIL_FROM:-fabrikadann <info@fabrikadann.com>}
       # Uygulama kısıtlı rolle bağlanır
       DATABASE_URL: postgres://fabrikadann_app:${APP_DB_PASSWORD}@db:5432/fabrikadann
       UPLOAD_DIR: /app/uploads
