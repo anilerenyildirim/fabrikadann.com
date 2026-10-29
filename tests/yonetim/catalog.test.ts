@@ -49,9 +49,19 @@ beforeEach(async () => {
   await resetDb();
   const admin = await makeUser({ role: "admin" });
   ctx = { actorId: admin.id, ip: "10.0.0.1" };
+  // Doğrudan eklenir: işlem günlüğüne yazmasın
+  const [m] = await db.insert(schema.manufacturers).values({ name: "Test Üretici" }).returning();
+  base.manufacturerId = m!.id;
 });
 
-const base = { price: 129990, trendyolPrice: null, categoryId: null, status: "draft" as const, featured: false };
+const base = {
+  price: 129990,
+  trendyolPrice: null,
+  categoryId: null,
+  status: "draft" as const,
+  featured: false,
+  manufacturerId: null as string | null,
+};
 
 async function png(width = 400, height = 500) {
   return sharp({ create: { width, height, channels: 3, background: { r: 20, g: 20, b: 20 } } })

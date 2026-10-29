@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -34,7 +35,15 @@ export const orderStatus = pgEnum("order_status", [
 ]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed"]);
 export const cancelReason = pgEnum("cancel_reason", ["payment_expired", "admin"]);
-export const stockReason = pgEnum("stock_reason", ["order", "cancel", "manual", "trendyol", "initial"]);
+export const stockReason = pgEnum("stock_reason", [
+  "order",
+  "cancel",
+  "manual",
+  "trendyol",
+  "initial",
+  "purchase",
+  "supplier_return",
+]);
 
 // ---------- Kullanıcılar ve oturumlar ----------
 
@@ -197,9 +206,14 @@ export const variants = pgTable(
     size: text("size").notNull(),
     sku: text("sku").notNull(),
     barcode: text("barcode"),
+    // Mağaza içi üretim barkodu (EAN-13, "29" ile başlar); yalnızca yönetimde görünür. Değeri veritabanı üretir.
+    productionBarcode: text("production_barcode")
+      .notNull()
+      .default(sql`next_production_barcode()`),
     stock: integer("stock").notNull().default(0),
   },
   (t) => [
+    uniqueIndex("variants_production_barcode_idx").on(t.productionBarcode),
     uniqueIndex("variants_sku_idx").on(t.sku),
     // Trendyol eşleşmesi barkodla yapılır; aynı barkod iki numarada olamaz
     uniqueIndex("variants_barcode_idx").on(t.barcode).where(sql`${t.barcode} is not null`),
@@ -397,6 +411,136 @@ export const trendyolStockPush = pgTable("trendyol_stock_push", {
   attempts: integer("attempts").notNull().default(0),
   pushedAt: timestamp("pushed_at", { withTimezone: true }).notNull(),
 });
+
+// ---------- Üreticiler ve muhasebe (yalnızca yönetim) ----------
+// Vitrin sorguları bu tablolara hiç dokunmaz: alış fiyatı ve üretici müşteriye sızamaz.
+
+export const manufacturers = pgTable(
+  "manufacturers",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    contactName: text("contact_name").notNull().default(""),
+    phone: text("phone").notNull().default(""),
+    email: text("email").notNull().default(""),
+    taxOffice: text("tax_office").notNull().default(""),
+    taxNumber: text("tax_number").notNull().default(""),
+    address: text("address").notNull().default(""),
+    iban: text("iban").notNull().default(""),
+    note: text("note").notNull().default(""),
+    // Sisteme geçmeden önceki borç (pozitif: biz borçluyuz)
+    openingBalance: integer("opening_balance").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("manufacturers_name_idx").on(sql`lower(${t.name})`)],
+);
+
+export const productSupply = pgTable(
+  "product_supply",
+  {
+    productId: uuid("product_id")
+      .primaryKey()
+      .references(() => products.id, { onDelete: "cascade" }),
+    manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "restrict" }),
+    // Birim alış fiyatı (kuruş)
+    purchasePrice: integer("purchase_price"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("product_supply_manufacturer_idx").on(t.manufacturerId),
+    check("product_supply_price_non_negative", sql`${t.purchasePrice} >= 0`),
+  ],
+);
+
+// Satış anındaki maliyet ve üretici (ürünün alış fiyatı sonradan değişse de geçmiş kâr değişmez)
+export const orderItemCosts = pgTable(
+  "order_item_costs",
+  {
+    orderItemId: uuid("order_item_id")
+      .primaryKey()
+      .references(() => orderItems.id, { onDelete: "cascade" }),
+    manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "restrict" }),
+    unitCost: integer("unit_cost"),
+  },
+  (t) => [index("order_item_costs_manufacturer_idx").on(t.manufacturerId)],
+);
+
+export const purchaseKind = pgEnum("purchase_kind", ["purchase", "return"]);
+
+// Mal alım fişi ya da üreticiye iade fişi. Silinmez; yanlışlık ters fişle düzeltilir.
+export const purchases = pgTable(
+  "purchases",
+  {
+    id: id(),
+    number: integer("number").generatedAlwaysAsIdentity(),
+    kind: purchaseKind("kind").notNull(),
+    manufacturerId: uuid("manufacturer_id")
+      .notNull()
+      .references(() => manufacturers.id, { onDelete: "restrict" }),
+    date: date("date", { mode: "string" }).notNull(),
+    note: text("note").notNull().default(""),
+    total: integer("total").notNull(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("purchases_number_idx").on(t.number),
+    index("purchases_manufacturer_idx").on(t.manufacturerId, t.date),
+    check("purchases_total_non_negative", sql`${t.total} >= 0`),
+  ],
+);
+
+export const purchaseItems = pgTable(
+  "purchase_items",
+  {
+    id: id(),
+    purchaseId: uuid("purchase_id")
+      .notNull()
+      .references(() => purchases.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id").references(() => variants.id, { onDelete: "set null" }),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    productName: text("product_name").notNull(),
+    colorName: text("color_name").notNull(),
+    size: text("size").notNull(),
+    productionBarcode: text("production_barcode").notNull(),
+    quantity: integer("quantity").notNull(),
+    unitCost: integer("unit_cost").notNull(),
+  },
+  (t) => [
+    index("purchase_items_purchase_idx").on(t.purchaseId),
+    index("purchase_items_variant_idx").on(t.variantId),
+    index("purchase_items_product_idx").on(t.productId),
+    check("purchase_items_quantity_positive", sql`${t.quantity} > 0`),
+    check("purchase_items_cost_non_negative", sql`${t.unitCost} >= 0`),
+  ],
+);
+
+export const ledgerKind = pgEnum("ledger_kind", ["income", "expense"]);
+
+// Elle girilen gelir ve giderler. Site satışları siparişlerden hesaplanır, buraya yazılmaz.
+export const ledgerEntries = pgTable(
+  "ledger_entries",
+  {
+    id: id(),
+    kind: ledgerKind("kind").notNull(),
+    category: text("category").notNull(),
+    date: date("date", { mode: "string" }).notNull(),
+    amount: integer("amount").notNull(),
+    method: text("method").notNull(),
+    description: text("description").notNull().default(""),
+    // Yalnızca "Üretici ödemesi" giderinde dolu; üreticinin borcundan düşer
+    manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "restrict" }),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("ledger_entries_date_idx").on(t.date),
+    index("ledger_entries_manufacturer_idx").on(t.manufacturerId),
+    check("ledger_entries_amount_positive", sql`${t.amount} > 0`),
+  ],
+);
 
 // ---------- Yönetim ----------
 

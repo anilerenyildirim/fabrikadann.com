@@ -78,6 +78,8 @@ export const STOCK_REASON_LABELS: Record<(typeof schema.stockReason.enumValues)[
   manual: "Elle düzeltme",
   trendyol: "Trendyol",
   initial: "İlk stok",
+  purchase: "Mal alımı",
+  supplier_return: "Üreticiye iade",
 };
 
 export async function listStockMovements(limit = 50) {

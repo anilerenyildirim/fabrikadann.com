@@ -185,6 +185,16 @@ export async function createOrder(owner: CartOwner, input: CreateOrderInput): Pr
         imageKey: l.image?.key ?? null,
       })),
     );
+    // Muhasebe: satış anındaki alış fiyatı ve üretici (yalnızca yönetim tablosu; müşteri sorguları okumaz)
+    await tx.execute(sql`
+      insert into order_item_costs (order_item_id, manufacturer_id, unit_cost)
+      select oi.id, ps.manufacturer_id, ps.purchase_price
+      from order_items oi
+      join variants v on v.id = oi.variant_id
+      join product_colors c on c.id = v.color_id
+      join product_supply ps on ps.product_id = c.product_id
+      where oi.order_id = ${order.id}
+    `);
     await clearCart(cart.id, tx);
     return { id: order.id, number: order.number, total: order.total, guestAccessToken };
   });

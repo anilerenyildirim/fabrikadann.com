@@ -8,6 +8,7 @@ import { audit } from "../audit";
 import { compareSizes, foldForSearch, type ImageRef } from "../catalog";
 import { reservedByVariant, setPhysicalCount, setStock, StaleStockError } from "../stock";
 import { AdminError, assertAdmin, isUniqueViolation, reorder, type AdminContext } from "./context";
+import { assertManufacturer, getProductSupply, writeProductSupply } from "./manufacturers";
 
 const { products, productColors, productImages, variants, categories, orderItems } = schema;
 
@@ -45,6 +46,15 @@ export const productInputSchema = z.object({
   trendyolPrice: priceSchema.nullable().default(null),
   status: z.enum(["draft", "active", "archived"], { error: "Durum seçin." }).default("draft"),
   featured: z.boolean().default(false),
+  // Yalnızca yönetim: product_supply tablosuna yazılır
+  manufacturerId: z.uuid("Üretici seçin.").nullable().default(null),
+  purchasePrice: z
+    .number({ error: "Alış fiyatını 850,00 biçiminde yazın." })
+    .int("Alış fiyatını 850,00 biçiminde yazın.")
+    .min(0, "Alış fiyatı 0'dan küçük olamaz.")
+    .max(MAX_PRICE_KURUS, "Alış fiyatı 1.000.000 TL'den küçük olmalı.")
+    .nullable()
+    .default(null),
 });
 
 export type ProductInput = z.input<typeof productInputSchema>;
@@ -229,8 +239,10 @@ export async function getAdminProduct(id: string) {
   if (!product) return null;
   const ids = product.colors.flatMap((c) => c.variants.map((v) => v.id));
   const reserved = ids.length ? await reservedByVariant(db, ids) : new Map<string, number>();
+  const supply = await getProductSupply(product.id);
   return {
     ...product,
+    ...supply,
     colors: product.colors.map((c) => ({
       ...c,
       variants: [...c.variants]
@@ -286,33 +298,49 @@ export async function createProduct(raw: ProductInput, ctx: AdminContext): Promi
   }
   checkTrendyolPrice(input.price, input.trendyolPrice);
   await assertCategory(input.categoryId, db);
+  if (!input.manufacturerId) throw new AdminError("Üretici seçin. Listede yoksa önce Üreticiler sayfasından ekleyin.", "manufacturerId");
+  const manufacturer = await assertManufacturer(input.manufacturerId, db);
+  if (!manufacturer.active) throw new AdminError("Seçilen üretici pasif. Etkin bir üretici seçin.", "manufacturerId");
   const base = slugBase(input.slug || input.name);
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const slug = await freeSlug("product", base, null, db);
     try {
-      const [row] = await db
-        .insert(products)
-        .values({
-          name: input.name,
-          slug,
-          description: input.description,
-          details: input.details,
-          categoryId: input.categoryId,
-          price: input.price,
-          trendyolPrice: input.trendyolPrice,
-          status: input.status,
-          featured: input.featured,
-        })
-        .returning({ id: products.id, slug: products.slug });
-      await audit({
-        action: "product.create",
-        actorId: ctx.actorId,
-        target: row!.id,
-        data: { name: input.name, slug, price: input.price },
-        ip: ctx.ip,
+      const row = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(products)
+          .values({
+            name: input.name,
+            slug,
+            description: input.description,
+            details: input.details,
+            categoryId: input.categoryId,
+            price: input.price,
+            trendyolPrice: input.trendyolPrice,
+            status: input.status,
+            featured: input.featured,
+          })
+          .returning({ id: products.id, slug: products.slug });
+        await writeProductSupply(row!.id, { manufacturerId: input.manufacturerId, purchasePrice: input.purchasePrice }, tx);
+        await audit(
+          {
+            action: "product.create",
+            actorId: ctx.actorId,
+            target: row!.id,
+            data: {
+              name: input.name,
+              slug,
+              price: input.price,
+              manufacturerId: input.manufacturerId,
+              purchasePrice: input.purchasePrice,
+            },
+            ip: ctx.ip,
+          },
+          tx,
+        );
+        return row!;
       });
-      return row!;
+      return row;
     } catch (e) {
       // Aynı anda aynı adla iki ürün: bir sonraki boş adresi dene
       if (!isUniqueViolation(e)) throw e;
@@ -343,6 +371,11 @@ export async function updateProduct(
       if (!current) throw new AdminError("Ürün bulunamadı.");
       if (opts.statusShown && input.status === opts.statusShown) input.status = current.status;
       await assertCategory(input.categoryId, tx);
+      const supply = await getProductSupply(productId, tx);
+      if (input.manufacturerId && input.manufacturerId !== supply.manufacturerId) {
+        const m = await assertManufacturer(input.manufacturerId, tx);
+        if (!m.active) throw new AdminError("Seçilen üretici pasif. Etkin bir üretici seçin.", "manufacturerId");
+      }
 
       let slug: string;
       if (input.slug) {
@@ -378,9 +411,14 @@ export async function updateProduct(
           featured: input.featured,
         })
         .where(eq(products.id, productId));
+      await writeProductSupply(productId, { manufacturerId: input.manufacturerId, purchasePrice: input.purchasePrice }, tx);
 
       const changed = (Object.keys(input) as (keyof typeof input)[]).filter((k) =>
-        k === "slug" ? slug !== current.slug : input[k] !== current[k],
+        k === "slug"
+          ? slug !== current.slug
+          : k === "manufacturerId" || k === "purchasePrice"
+            ? input[k] !== supply[k]
+            : input[k] !== current[k],
       );
       await audit(
         {
@@ -391,6 +429,12 @@ export async function updateProduct(
             changed,
             ...(changed.includes("price") ? { price: { from: current.price, to: input.price } } : {}),
             ...(changed.includes("status") ? { status: { from: current.status, to: input.status } } : {}),
+            ...(changed.includes("purchasePrice")
+              ? { purchasePrice: { from: supply.purchasePrice, to: input.purchasePrice } }
+              : {}),
+            ...(changed.includes("manufacturerId")
+              ? { manufacturerId: { from: supply.manufacturerId, to: input.manufacturerId } }
+              : {}),
           },
           ip: ctx.ip,
         },
