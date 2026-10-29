@@ -58,15 +58,21 @@ test("üretici, alış fişi, ödeme ve muhasebe", async ({ page }) => {
   const manufacturerUrl = page.url();
   const manufacturerId = manufacturerUrl.split("/").pop()!;
 
-  // İlk ürüne üretici ve alış fiyatı
-  await page.goto("/yonetim/urunler");
-  await page.locator("main table tbody tr a").nth(1).click();
-  await page.waitForURL(/\/yonetim\/urunler\/[0-9a-f-]{36}/);
-  const productUrl = page.url().split("?")[0]!.split("#")[0]!;
+  // Yeni ürün: üretici ve alış fiyatıyla, bir renk ve iki numara
+  await page.goto("/yonetim/urunler/yeni");
+  await checkLayout(page, "/yonetim/urunler/yeni");
+  await page.getByLabel("Ürün adı").fill(`${name} Bot`);
+  await page.getByLabel("Fiyat (TL, KDV dahil)").fill("1.500,00");
   await page.getByLabel("Üretici", { exact: true }).selectOption({ label: name });
   await page.getByLabel("Alış fiyatı (TL, çift başı)").fill("500,00");
-  await page.getByRole("button", { name: "Bilgileri kaydet" }).click();
-  await expect(page.getByText("Ürün bilgileri kaydedildi.")).toBeVisible();
+  await page.getByRole("button", { name: "Ürünü oluştur" }).click();
+  await page.waitForURL(/\/yonetim\/urunler\/[0-9a-f-]{36}\?yeni=1/);
+  const productUrl = page.url().split("?")[0]!;
+  await page.getByLabel("Yeni renk").fill("Siyah");
+  await page.getByRole("button", { name: "Renk ekle" }).click();
+  await page.getByLabel("Numara ekle — Siyah").fill("40-41");
+  await page.getByRole("button", { name: "Numaraları ekle" }).click();
+  await expect(page.locator("main").getByText(/29\d{11}/).first()).toBeVisible();
   await checkLayout(page, "ürün sayfası");
 
   // Barkod etiketleri
