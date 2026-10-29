@@ -18,6 +18,7 @@ import { ProductImage } from "@/components/ui/ProductImage";
 import { formatPrice } from "@/lib/money";
 import { requireAdmin } from "@/server/auth/current";
 import { categoryOptions, getAdminProduct, publishProblem, type ProductStatus } from "@/server/services/admin/catalog";
+import { manufacturerOptions } from "@/server/services/admin/manufacturers";
 import { adjustStockAction } from "../../stok/actions";
 import {
   addColorAction,
@@ -69,6 +70,7 @@ export default async function EditProductPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const [product, categories] = await Promise.all([getAdminProduct(id), categoryOptions()]);
   if (!product) notFound();
+  const manufacturers = await manufacturerOptions(product.manufacturerId);
   const problem = await publishProblem(product.id);
   const totalStock = product.colors.reduce((n, c) => n + c.variants.reduce((m, v) => m + v.stock, 0), 0);
   const isNew = sp.yeni === "1";
@@ -141,6 +143,7 @@ export default async function EditProductPage({ params, searchParams }: Props) {
           mode="edit"
           action={updateProductAction}
           categories={categories}
+          manufacturers={manufacturers}
           publishProblem={problem}
           initial={{
             productId: product.id,
@@ -153,6 +156,8 @@ export default async function EditProductPage({ params, searchParams }: Props) {
             trendyolPrice: priceInput(product.trendyolPrice),
             status: product.status,
             featured: product.featured,
+            manufacturerId: product.manufacturerId ?? "",
+            purchasePrice: priceInput(product.purchasePrice),
           }}
         />
       </Section>
@@ -235,7 +240,17 @@ export default async function EditProductPage({ params, searchParams }: Props) {
       <Section
         id="numaralar"
         title="Numaralar ve stok"
-        description="Stok Trendyol ile ortak: oradan satış olduğunda burada düşün ve sebebini yazın. Her değişiklik stok hareketlerine kaydedilir."
+        description="Stok Trendyol ile ortak: oradan satış olduğunda burada düşün ve sebebini yazın. Her değişiklik stok hareketlerine kaydedilir. Her numaraya otomatik bir üretim barkodu verilir; yalnızca panelde görünür."
+        actions={
+          product.colors.some((c) => c.variants.length > 0) ? (
+            <Link
+              href={`/yonetim/urunler/${product.id}/etiket`}
+              className="label inline-flex min-h-11 items-center border border-ink px-4 hover:bg-fog"
+            >
+              Barkod etiketlerini yazdır
+            </Link>
+          ) : undefined
+        }
       >
         {product.colors.length === 0 && <Empty>Numara eklemek için önce bir renk ekleyin.</Empty>}
         {product.colors.map((color) => (
@@ -262,6 +277,10 @@ export default async function EditProductPage({ params, searchParams }: Props) {
                           <span className="mt-1 block text-[0.75rem] text-graphite">
                             {v.stock === 0 ? "Tükendi" : `${v.stock} satılabilir`}
                             {v.reserved > 0 ? ` · ${v.reserved} ayrılmış` : ""}
+                          </span>
+                          <span className="mt-1 block text-[0.75rem] text-graphite">
+                            <span className="sr-only">Üretim barkodu: </span>
+                            {v.productionBarcode}
                           </span>
                         </td>
                         <td className={td}>

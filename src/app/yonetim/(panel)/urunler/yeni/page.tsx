@@ -3,13 +3,14 @@ import { ProductInfoForm } from "@/components/admin/product/ProductInfoForm";
 import { PageHeader } from "@/components/admin/ui";
 import { requireAdmin } from "@/server/auth/current";
 import { categoryOptions } from "@/server/services/admin/catalog";
+import { manufacturerOptions } from "@/server/services/admin/manufacturers";
 import { createProductAction } from "../actions";
 
 export const metadata: Metadata = { title: "Yeni ürün" };
 
 export default async function NewProductPage() {
   await requireAdmin();
-  const categories = await categoryOptions();
+  const [categories, manufacturers] = await Promise.all([categoryOptions(), manufacturerOptions()]);
   return (
     <>
       <PageHeader
@@ -21,6 +22,7 @@ export default async function NewProductPage() {
         mode="create"
         action={createProductAction}
         categories={categories}
+        manufacturers={manufacturers}
         initial={{
           name: "",
           slug: "",
@@ -31,6 +33,8 @@ export default async function NewProductPage() {
           trendyolPrice: "",
           status: "draft",
           featured: false,
+          manufacturerId: "",
+          purchasePrice: "",
         }}
       />
     </>

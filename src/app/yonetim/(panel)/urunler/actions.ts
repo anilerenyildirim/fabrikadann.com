@@ -75,6 +75,23 @@ const productForm = z.object({
     .string()
     .optional()
     .transform((v) => v === "on"),
+  manufacturerId: z
+    .string()
+    .default("")
+    .transform((v) => v || null),
+  purchasePrice: z
+    .string()
+    .trim()
+    .default("")
+    .transform((s, ctx) => {
+      if (!s) return null;
+      const k = parsePriceToKurus(s);
+      if (Number.isNaN(k)) {
+        ctx.addIssue({ code: "custom", message: "Alış fiyatını 850,00 biçiminde yazın ya da boş bırakın." });
+        return z.NEVER;
+      }
+      return k;
+    }),
 });
 
 export async function createProductAction(_prev: FormState, form: FormData): Promise<FormState> {

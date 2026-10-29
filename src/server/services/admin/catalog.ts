@@ -183,7 +183,12 @@ export async function listAdminProducts(
             .select({ one: sql`1` })
             .from(variants)
             .innerJoin(productColors, eq(productColors.id, variants.colorId))
-            .where(and(eq(productColors.productId, products.id), like(variants.sku, skuPattern))),
+            .where(
+              and(
+                eq(productColors.productId, products.id),
+                or(like(variants.sku, skuPattern), eq(variants.productionBarcode, q)),
+              ),
+            ),
         ),
       )!,
     );

@@ -9,6 +9,8 @@ export const ADMIN_NAV = [
   { href: "/yonetim/urunler", label: "Ürünler" },
   { href: "/yonetim/kategoriler", label: "Kategoriler" },
   { href: "/yonetim/stok", label: "Stok" },
+  { href: "/yonetim/ureticiler", label: "Üreticiler" },
+  { href: "/yonetim/muhasebe", label: "Muhasebe" },
   { href: "/yonetim/musteriler", label: "Müşteriler" },
   { href: "/yonetim/ayarlar", label: "Ayarlar" },
   { href: "/yonetim/gunluk", label: "İşlem günlüğü" },

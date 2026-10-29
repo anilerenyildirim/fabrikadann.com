@@ -18,7 +18,7 @@ export default async function AdminPanelLayout({ children }: { children: React.R
       >
         İçeriğe geç
       </a>
-      <aside className="sticky top-0 z-30 border-b border-rule bg-paper lg:flex lg:h-svh lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-b-0">
+      <aside className="sticky top-0 z-30 print:hidden border-b border-rule bg-paper lg:flex lg:h-svh lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-b-0">
         <div className="flex h-14 items-center gap-3 px-4 lg:h-20 lg:px-6">
           <Link href="/yonetim" className="flex min-h-11 items-center gap-3" aria-label="Yönetim panosu">
             <Wordmark className="h-[11px] w-auto" />
@@ -52,9 +52,9 @@ export default async function AdminPanelLayout({ children }: { children: React.R
           </form>
         </div>
       </aside>
-      <main id="icerik" className="min-w-0 flex-1 px-4 pt-6 pb-16 md:px-8 lg:px-12 lg:pt-12">
+      <main id="icerik" className="min-w-0 flex-1 px-4 pt-6 pb-16 md:px-8 lg:px-12 lg:pt-12 print:p-0">
         {children}
-        <p className="mt-16 lg:hidden">
+        <p className="mt-16 lg:hidden print:hidden">
           <Link href="/" target="_blank" rel="noopener" className="label inline-flex min-h-11 items-center text-graphite">
             Vitrini aç <span aria-hidden="true">&nbsp;↗</span>
           </Link>

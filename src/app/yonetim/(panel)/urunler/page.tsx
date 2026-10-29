@@ -52,7 +52,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       <SearchForm
         action="/yonetim/urunler"
         q={q}
-        placeholder="Ürün adı ya da SKU"
+        placeholder="Ürün adı, SKU ya da üretim barkodu"
         hidden={{ durum: status === "all" ? undefined : status, kategori }}
       />
       {category && (

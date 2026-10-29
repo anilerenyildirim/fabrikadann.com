@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Button, Checkbox, SelectField, TextArea, TextField } from "@/components/ui/form";
 import type { FormState } from "@/lib/form";
@@ -17,20 +18,36 @@ export type ProductInfoValues = {
   trendyolPrice: string;
   status: "draft" | "active" | "archived";
   featured: boolean;
+  manufacturerId: string;
+  purchasePrice: string;
 };
 
-const FIELDS = ["name", "slug", "description", "details", "categoryId", "price", "trendyolPrice", "status", "featured"];
+const FIELDS = [
+  "name",
+  "slug",
+  "description",
+  "details",
+  "categoryId",
+  "price",
+  "trendyolPrice",
+  "status",
+  "featured",
+  "manufacturerId",
+  "purchasePrice",
+];
 
 export function ProductInfoForm({
   action,
   initial,
   categories,
+  manufacturers,
   mode,
   publishProblem,
 }: {
   action: FormAction;
   initial: ProductInfoValues;
   categories: { id: string; name: string }[];
+  manufacturers: { id: string; name: string; active: boolean }[];
   mode: "create" | "edit";
   publishProblem?: string | null;
 }) {
@@ -100,6 +117,44 @@ export function ProductInfoForm({
           className="[&_input]:[font-variant-numeric:tabular-nums]"
         />
       </div>
+
+      <fieldset className="grid min-w-0 gap-7 border border-rule p-4 sm:grid-cols-2 md:p-5">
+        <legend className="label px-2 text-graphite">Yalnızca yönetim — vitrinde görünmez</legend>
+        <SelectField
+          key={`uretici-${initial.manufacturerId}`}
+          label="Üretici"
+          name="manufacturerId"
+          required={mode === "create"}
+          defaultValue={v("manufacturerId")}
+          error={e.manufacturerId}
+        >
+          <option value="">{mode === "create" ? "Üretici seçin" : "Seçilmedi"}</option>
+          {manufacturers.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.active ? m.name : `${m.name} (pasif)`}
+            </option>
+          ))}
+        </SelectField>
+        <TextField
+          label="Alış fiyatı (TL, çift başı)"
+          name="purchasePrice"
+          inputMode="decimal"
+          placeholder="850,00"
+          defaultValue={v("purchasePrice")}
+          error={e.purchasePrice}
+          hint="Üreticiye ödenen fiyat. Kâr ve üretici borcu bununla hesaplanır."
+          className="[&_input]:[font-variant-numeric:tabular-nums]"
+        />
+        {manufacturers.length === 0 && (
+          <p className="text-[0.8125rem] text-graphite sm:col-span-2">
+            Henüz üretici yok. Önce{" "}
+            <Link href="/yonetim/ureticiler" className="text-ink underline underline-offset-4">
+              Üreticiler
+            </Link>{" "}
+            sayfasından ekleyin.
+          </p>
+        )}
+      </fieldset>
 
       <div className="grid gap-7 sm:grid-cols-2">
         {/*
