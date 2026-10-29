@@ -288,3 +288,53 @@ describe("dışa aktarma", () => {
     expect(lines[0]).toMatchObject({ quantity: 2, unit_cost: 1000, manufacturer: "Atölye", production_barcode: variants[0]!.productionBarcode });
   });
 });
+
+describe("inceleme düzeltmeleri", () => {
+  test("aynı form kimliğiyle ikinci gönderim yeni fiş açmaz", async () => {
+    const m = await createManufacturer({ name: "Atölye" }, ctx);
+    const { variants } = await supplied(m.id, 1000);
+    const input = {
+      kind: "purchase" as const,
+      manufacturerId: m.id,
+      date: today,
+      requestId: "7d3c6f0e-8a52-4f8e-9b41-2c0d5b7a1e93",
+      lines: [{ variantId: variants[0]!.id, quantity: 4, unitCost: 1000 }],
+    };
+    const [a, b] = await Promise.all([createPurchase(input, ctx), createPurchase(input, ctx)]);
+    const c = await createPurchase(input, ctx);
+    expect(new Set([a.id, b.id, c.id]).size).toBe(1);
+    expect(await stockOf(variants[0]!.id)).toBe(4);
+  });
+
+  test("alış fişi olan ürünün üreticisi değiştirilemez", async () => {
+    const a = await createManufacturer({ name: "A" }, ctx);
+    const b = await createManufacturer({ name: "B" }, ctx);
+    const { id } = await createProduct({ name: "Bot", price: 200000, manufacturerId: a.id, purchasePrice: 1000 }, ctx);
+    await updateProduct(id, { name: "Bot", price: 200000, manufacturerId: b.id, purchasePrice: 1000 }, ctx);
+    const [color] = await db.insert(schema.productColors).values({ productId: id, name: "Siyah" }).returning();
+    const [v] = await db.insert(schema.variants).values({ colorId: color!.id, size: "40", sku: "X-40" }).returning();
+    await createPurchase({ kind: "purchase", manufacturerId: b.id, date: today, lines: [{ variantId: v!.id, quantity: 1, unitCost: 1000 }] }, ctx);
+    await expect(updateProduct(id, { name: "Bot", price: 200000, manufacturerId: a.id, purchasePrice: 1000 }, ctx)).rejects.toMatchObject({ field: "manufacturerId" });
+    await expect(updateProduct(id, { name: "Bot", price: 200000, manufacturerId: null, purchasePrice: 1000 }, ctx)).rejects.toMatchObject({ field: "manufacturerId" });
+    // Alış fiyatı değişebilir
+    await updateProduct(id, { name: "Bot", price: 200000, manufacturerId: b.id, purchasePrice: 1200 }, ctx);
+  });
+
+  test("Trendyol satırında sabitlenen maliyet, güncel alış fiyatından önce gelir", async () => {
+    const m = await createManufacturer({ name: "Atölye" }, ctx);
+    const { variants } = await supplied(m.id, 99999, [{ size: "40", stock: 5 }]);
+    await db.insert(schema.trendyolPackages).values({ id: "p1", orderNumber: "T1", status: "Delivered", lines: [], orderDate: new Date() });
+    await db.insert(schema.trendyolOrderStock).values({
+      orderNumber: "T1",
+      barcode: "a",
+      variantId: variants[0]!.id,
+      quantity: 2,
+      deducted: 2,
+      unitCost: 30000,
+      manufacturerId: m.id,
+      costFixedAt: new Date(),
+    });
+    const { from, to } = monthRange();
+    expect((await accountingSummary(from, to)).trendyolCost).toBe(60000);
+  });
+});

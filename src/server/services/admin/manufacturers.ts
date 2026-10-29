@@ -120,7 +120,8 @@ export async function deleteManufacturer(id: string, ctx: AdminContext): Promise
         (select count(*) from product_supply where manufacturer_id = ${manufacturerId}) +
         (select count(*) from purchases where manufacturer_id = ${manufacturerId}) +
         (select count(*) from ledger_entries where manufacturer_id = ${manufacturerId}) +
-        (select count(*) from order_item_costs where manufacturer_id = ${manufacturerId})
+        (select count(*) from order_item_costs where manufacturer_id = ${manufacturerId}) +
+        (select count(*) from trendyol_order_stock where manufacturer_id = ${manufacturerId})
       )::int as n
     `);
     if (Number(result.rows[0]?.n ?? 0) > 0 || current.openingBalance !== 0) {

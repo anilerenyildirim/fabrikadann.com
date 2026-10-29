@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 export function TableWrap({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div
-      className="-mx-4 overflow-x-auto overscroll-x-contain px-4 md:mx-0 md:px-0"
+      // relative: tablo içindeki mutlak konumlu sr-only metinler de kırpılsın (yoksa telefonda sayfa genişler)
+      className="relative -mx-4 overflow-x-auto overscroll-x-contain px-4 md:mx-0 md:px-0"
       role="region"
       aria-label={label}
       tabIndex={0}

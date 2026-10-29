@@ -121,7 +121,7 @@ export async function listLedgerEntries(
   input: { from?: string; to?: string; kind?: LedgerKind; manufacturerId?: string; page?: number } = {},
 ) {
   const where: SQL[] = [];
-  if (input.from && businessDateSchema.safeParse(input.from).success) where.push(gte(ledgerEntries.date, input.from));
+  if (input.from && /^\d{4}-\d{2}-\d{2}$/.test(input.from)) where.push(gte(ledgerEntries.date, input.from));
   if (input.to && /^\d{4}-\d{2}-\d{2}$/.test(input.to)) where.push(lte(ledgerEntries.date, input.to));
   if (input.kind === "income" || input.kind === "expense") where.push(eq(ledgerEntries.kind, input.kind));
   if (input.manufacturerId && z.uuid().safeParse(input.manufacturerId).success) {

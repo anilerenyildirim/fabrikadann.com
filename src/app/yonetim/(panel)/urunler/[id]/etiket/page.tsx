@@ -24,17 +24,14 @@ export default async function LabelsPage({ params, searchParams }: Props) {
   const product = await getAdminProduct(id);
   if (!product) notFound();
 
-  const labels = product.colors.flatMap((c) =>
-    c.variants.flatMap((v) =>
-      Array.from({ length: byStock ? v.stock : 1 }, (_, i) => ({
-        key: `${v.id}-${i}`,
-        color: c.name,
-        size: v.size,
-        code: v.productionBarcode,
-      })),
-    ),
-  );
-  const shown = labels.slice(0, MAX_LABELS);
+  const total = product.colors.reduce((n, c) => n + c.variants.reduce((m, v) => m + (byStock ? v.stock : 1), 0), 0);
+  const shown: { key: string; color: string; size: string; code: string }[] = [];
+  for (const c of product.colors) {
+    for (const v of c.variants) {
+      const copies = Math.min(byStock ? v.stock : 1, MAX_LABELS - shown.length);
+      for (let i = 0; i < copies; i++) shown.push({ key: `${v.id}-${i}`, color: c.name, size: v.size, code: v.productionBarcode });
+    }
+  }
   const tab = (active: boolean) =>
     `label inline-flex min-h-11 items-center px-3 ${active ? "bg-ink text-paper" : "text-graphite hover:text-ink"}`;
 
@@ -59,12 +56,12 @@ export default async function LabelsPage({ params, searchParams }: Props) {
             Stok adedi kadar
           </Link>
         </nav>
-        {labels.length > MAX_LABELS && (
+        {total > MAX_LABELS && (
           <p className="mb-6 text-[0.8125rem] text-graphite">
-            {labels.length} etiketin ilk {MAX_LABELS} tanesi gösteriliyor.
+            {total} etiketin ilk {MAX_LABELS} tanesi gösteriliyor.
           </p>
         )}
-        {labels.length === 0 && <p className="text-[0.8125rem] text-graphite">Yazdırılacak etiket yok (stok 0).</p>}
+        {total === 0 && <p className="text-[0.8125rem] text-graphite">Yazdırılacak etiket yok (stok 0).</p>}
       </div>
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-3 print:gap-2">
         {shown.map((l) => (

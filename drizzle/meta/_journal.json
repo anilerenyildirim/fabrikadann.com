@@ -64,6 +64,13 @@
       "when": 1793311582821,
       "tag": "0008_muhasebe",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793314041350,
+      "tag": "0009_muhasebe_anlik",
+      "breakpoints": true
     }
   ]
 }

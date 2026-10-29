@@ -313,6 +313,15 @@ async function applyOrder(orderNumber: string, baselineAt: number | undefined, b
         await tx.insert(trendyolOrderStock).values({ orderNumber, barcode, ...values });
       }
     }
+    // Muhasebe: satışın maliyeti ve üreticisi ilk eşleşmede sabitlenir (alış fiyatı sonradan değişse de geçmiş değişmez)
+    await tx.execute(sql`
+      update trendyol_order_stock s
+      set unit_cost = ps.purchase_price, manufacturer_id = ps.manufacturer_id, cost_fixed_at = now()
+      from variants v
+      join product_colors c on c.id = v.color_id
+      join product_supply ps on ps.product_id = c.product_id
+      where s.order_number = ${orderNumber} and s.variant_id = v.id and s.cost_fixed_at is null
+    `);
     return result;
   });
 }

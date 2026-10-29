@@ -31,6 +31,9 @@ async function login(page: Page) {
 async function checkLayout(page: Page, path: string) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, `${path}: yatay kaydırma olmamalı`).toBeLessThanOrEqual(0);
+  // Telefonda taşan öğe sayfayı uzaklaştırır: düzen genişliği ekran genişliğini aşmamalı
+  const layoutWidth = await page.evaluate(() => window.innerWidth);
+  expect(layoutWidth, `${path}: sayfa ekrandan geniş`).toBeLessThanOrEqual(page.viewportSize()!.width);
   const small = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>("main button, main a, main select, main input:not([type=hidden]):not([type=checkbox])")]
       .filter((el) => {

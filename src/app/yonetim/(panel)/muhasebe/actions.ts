@@ -70,6 +70,11 @@ const purchaseForm = z.object({
   manufacturerId: z.string().max(60).default(""),
   date: z.string().max(20).default(""),
   note: z.string().max(1000).default(""),
+  requestId: z
+    .string()
+    .max(60)
+    .default("")
+    .transform((v) => v || null),
   lines: z
     .string()
     .max(200_000, "Fiş çok uzun; bölün.")
@@ -93,7 +98,7 @@ export async function createPurchaseAction(_prev: FormState, form: FormData): Pr
     ({ id } = await createPurchase(parsed.data as Parameters<typeof createPurchase>[0], ctx));
   } catch (e) {
     // Satırlar istemcide durur; JSON geri gönderilmez
-    const { lines: _lines, ...values } = parsed.values;
+    const { lines: _lines, requestId: _requestId, ...values } = parsed.values;
     return errorState(e, values, "fis-ekle");
   }
   refresh();

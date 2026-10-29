@@ -4,7 +4,7 @@ import { db, schema } from "@/server/db";
 import { audit } from "../audit";
 import { compareSizes } from "../catalog";
 import { returnStock, takeStock } from "../stock";
-import { AdminError, assertAdmin, type AdminContext } from "./context";
+import { AdminError, assertAdmin, isUniqueViolation, type AdminContext } from "./context";
 import { assertManufacturer, MAX_AMOUNT_KURUS, parseManufacturerId } from "./manufacturers";
 
 const { purchases, purchaseItems, variants, productColors, products, productSupply, manufacturers } = schema;
@@ -25,7 +25,7 @@ export const businessDateSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Tarihi gün.ay.yıl olarak seçin.")
   .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v), "Geçerli bir tarih seçin.")
   .refine((v) => v >= "2020-01-01", "Tarih 2020'den önce olamaz.")
-  .refine((v) => v <= istanbulDate(new Date(Date.now() + 86_400_000)), "İleri tarihli kayıt girilemez.");
+  .refine((v) => v <= istanbulDate(), "İleri tarihli kayıt girilemez.");
 
 /** Bir anın İstanbul'daki takvim günü, "YYYY-MM-DD". */
 export function istanbulDate(d: Date = new Date()): string {
@@ -37,6 +37,8 @@ export const purchaseInputSchema = z.object({
   manufacturerId: z.uuid("Üretici seçin."),
   date: businessDateSchema,
   note: z.string().trim().max(500, "Not en fazla 500 karakter olabilir.").default(""),
+  /** Formun tek kullanımlık kimliği; aynı kimlikle ikinci gönderim yeni fiş açmaz */
+  requestId: z.uuid().nullable().default(null),
   lines: z
     .array(
       z.object({
@@ -79,6 +81,34 @@ export async function createPurchase(raw: PurchaseInput, ctx: AdminContext): Pro
   const ids = input.lines.map((l) => l.variantId);
   if (new Set(ids).size !== ids.length) throw new AdminError("Aynı numara fişte iki kez var; adetleri tek satırda toplayın.", "lines");
 
+  if (input.requestId) {
+    const [done] = await db
+      .select({ id: purchases.id, number: purchases.number })
+      .from(purchases)
+      .where(eq(purchases.requestId, input.requestId));
+    if (done) return done;
+  }
+
+  try {
+    return await insertPurchase(input, ids, ctx);
+  } catch (e) {
+    // Aynı form eşzamanlı iki kez gönderildi: ilk fiş geçerli
+    if (input.requestId && isUniqueViolation(e)) {
+      const [done] = await db
+        .select({ id: purchases.id, number: purchases.number })
+        .from(purchases)
+        .where(eq(purchases.requestId, input.requestId));
+      if (done) return done;
+    }
+    throw e;
+  }
+}
+
+async function insertPurchase(
+  input: z.output<typeof purchaseInputSchema>,
+  ids: string[],
+  ctx: AdminContext,
+): Promise<{ id: string; number: number }> {
   return db.transaction(async (tx) => {
     const manufacturer = await assertManufacturer(input.manufacturerId, tx);
     if (input.kind === "purchase" && !manufacturer.active) {
@@ -120,6 +150,7 @@ export async function createPurchase(raw: PurchaseInput, ctx: AdminContext): Pro
         date: input.date,
         note: input.note,
         total,
+        requestId: input.requestId,
         actorId: ctx.actorId,
       })
       .returning({ id: purchases.id, number: purchases.number });

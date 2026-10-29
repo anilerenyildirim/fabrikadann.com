@@ -19,7 +19,22 @@ test.skip(!email || !password || !secret, "E2E_ADMIN_* tanımlı değil");
 // Aynı TOTP adımı ikinci kez kabul edilmez: projeler sırayla çalışır, her giriş yeni adımı bekler
 test.setTimeout(120_000);
 
-const PAGES = ["/yonetim", "/yonetim/siparisler", "/yonetim/urunler", "/yonetim/kategoriler", "/yonetim/stok", "/yonetim/musteriler", "/yonetim/ayarlar", "/yonetim/gunluk"];
+const PAGES = [
+  "/yonetim",
+  "/yonetim/siparisler",
+  "/yonetim/urunler",
+  "/yonetim/kategoriler",
+  "/yonetim/stok",
+  "/yonetim/ureticiler",
+  "/yonetim/ureticiler/yeni",
+  "/yonetim/muhasebe",
+  "/yonetim/muhasebe/gelir-gider",
+  "/yonetim/muhasebe/fisler",
+  "/yonetim/muhasebe/fisler/yeni",
+  "/yonetim/musteriler",
+  "/yonetim/ayarlar",
+  "/yonetim/gunluk",
+];
 
 test("yönetim sayfaları: taşma yok, dokunma hedefleri yeterli", async ({ page }) => {
   await page.goto("/yonetim/giris");
@@ -36,6 +51,7 @@ test("yönetim sayfaları: taşma yok, dokunma hedefleri yeterli", async ({ page
     await page.goto(path);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `${path}: yatay kaydırma olmamalı`).toBeLessThanOrEqual(0);
+    expect(await page.evaluate(() => window.innerWidth), `${path}: sayfa ekrandan geniş`).toBeLessThanOrEqual(page.viewportSize()!.width);
     const small = await page.evaluate(() =>
       [...document.querySelectorAll<HTMLElement>("main button, main summary, nav a, header a, main select")]
         .filter((el) => {

@@ -391,6 +391,10 @@ export const trendyolOrderStock = pgTable(
     deducted: integer("deducted").notNull().default(0),
     // Stok yetmediği için düşülemeyen adet (iki kanalda aynı çift satıldı)
     shortfall: integer("shortfall").notNull().default(0),
+    // Muhasebe: eşleşme anındaki alış fiyatı ve üretici (yalnızca yönetim)
+    unitCost: integer("unit_cost"),
+    manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "restrict" }),
+    costFixedAt: timestamp("cost_fixed_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.orderNumber, t.barcode] }), index("trendyol_order_stock_variant_idx").on(t.variantId)],
@@ -482,11 +486,14 @@ export const purchases = pgTable(
     date: date("date", { mode: "string" }).notNull(),
     note: text("note").notNull().default(""),
     total: integer("total").notNull(),
+    // Formun tek kullanımlık kimliği: aynı gönderim iki kez fiş oluşturmaz
+    requestId: uuid("request_id"),
     actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex("purchases_number_idx").on(t.number),
+    uniqueIndex("purchases_request_idx").on(t.requestId),
     index("purchases_manufacturer_idx").on(t.manufacturerId, t.date),
     check("purchases_total_non_negative", sql`${t.total} >= 0`),
   ],

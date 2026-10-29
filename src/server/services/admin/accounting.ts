@@ -8,15 +8,17 @@ import { istanbulDate, purchaseRef, type PurchaseKind } from "./purchases";
 /*
  * Muhasebe hesapları. Tutarlar kuruş.
  * - Site satışı: ödenmiş ve iptal/iade edilmemiş sipariş (hazırlanıyor, kargoda, teslim edildi), ödeme tarihine göre.
- * - Satılan malın maliyeti: site satırında satış anındaki maliyet (yoksa ürünün güncel alış fiyatı);
- *   Trendyol satışında ürünün güncel alış fiyatı (Trendyol API'si satış fiyatı vermiyor; hakediş gelir olarak elle girilir).
+ * - Satılan malın maliyeti: satış anında sabitlenen alış fiyatı (site siparişi oluşurken, Trendyol satırı eşleşirken);
+ *   o an alış fiyatı yoksa ürünün güncel alış fiyatı. Trendyol satış tutarı API'den gelmez; hakediş gelir olarak elle girilir.
+ * - İade edilen sipariş ödendiği aydan düşer (iadenin olduğu aya eksi yazılmaz): geçmiş ay özeti iadeyle değişebilir.
  * - Üretici bakiyesi (pozitif: biz borçluyuz) = devir + alımlar − iadeler − ödemeler + üreticiden tahsilatlar.
  */
 
 const SOLD = sql`('preparing', 'shipped', 'delivered')`;
 // Trendyol'da iptal edilmemiş satır adedi trendyol_order_stock.quantity'de; tarih paketin sipariş tarihi
 const TRENDYOL_SALES = sql`
-  select s.variant_id, s.quantity, (select min(p.order_date) from trendyol_packages p where p.order_number = s.order_number) as at
+  select s.variant_id, s.quantity, s.unit_cost as fixed_cost, s.manufacturer_id as fixed_manufacturer,
+    (select min(p.order_date) from trendyol_packages p where p.order_number = s.order_number) as at
   from trendyol_order_stock s
   where s.variant_id is not null and s.quantity > 0
 `;
@@ -36,7 +38,8 @@ const SITE_SALES = sql`
 `;
 
 const TRENDYOL_SALES_COST = sql`
-  select t.quantity, t.at, ps.purchase_price as unit_cost, ps.manufacturer_id
+  select t.quantity, t.at, coalesce(t.fixed_cost, ps.purchase_price) as unit_cost,
+    coalesce(t.fixed_manufacturer, ps.manufacturer_id) as manufacturer_id
   from (${TRENDYOL_SALES}) t
   join variants v on v.id = t.variant_id
   join product_colors c on c.id = v.color_id

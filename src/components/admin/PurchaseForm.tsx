@@ -14,6 +14,8 @@ const qtyOf = (s: string | undefined) => {
   const n = Number(s);
   return Number.isInteger(n) && n > 0 ? n : 0;
 };
+/** Boş ya da 0 değilse ve pozitif tam sayı değilse hatalı (ör. "1,5"): satır sessizce düşmesin */
+const qtyBad = (s: string | undefined) => !!s && s.trim() !== "" && s.trim() !== "0" && qtyOf(s) === 0;
 
 /**
  * Mal alımı / iade fişi. Adetler numara numara girilir ya da barkod okutulur (okuyucu klavye gibi yazar ve Enter'a basar).
@@ -39,6 +41,8 @@ export function PurchaseForm({
   const [scanMessage, setScanMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
+  // Aynı fişin iki kez kaydedilmesini önler (çift tıklama, ağ tekrarı); sayfa yenilenince yeni kimlik
+  const [requestId] = useState(() => crypto.randomUUID());
 
   const byBarcode = useMemo(() => {
     const map = new Map<string, { product: Product; color: string; variant: Variant }>();
@@ -57,10 +61,16 @@ export function PurchaseForm({
   const total = lines.reduce((n, l) => n + (Number.isNaN(l.unitCost) ? 0 : l.unitCost * l.quantity), 0);
   const badCost = [...new Set(lines.filter((l) => Number.isNaN(l.unitCost)).map((l) => l.product.name))];
   const overStock = kind === "return" ? lines.filter((l) => l.quantity > l.variant.stock) : [];
+  const badQty = products.some((p) => p.colors.some((c) => c.variants.some((v) => qtyBad(qty[v.id]))));
 
   const submitBase = useSubmitWithoutReset(formAction);
   const submit: typeof submitBase = (event) => {
     setClientError(null);
+    if (badQty) {
+      event.preventDefault();
+      setClientError("Adetleri tam sayı olarak yazın (ör. 3). Hatalı kutular kalın çizgiyle işaretli.");
+      return;
+    }
     if (lines.length === 0) {
       event.preventDefault();
       setClientError("En az bir numara için adet girin.");
@@ -97,6 +107,7 @@ export function PurchaseForm({
   return (
     <form action={formAction} onSubmit={submit} noValidate className="flex flex-col gap-8">
       <input type="hidden" name="manufacturerId" value={manufacturer.id} />
+      <input type="hidden" name="requestId" value={requestId} />
       <input
         type="hidden"
         name="lines"
@@ -187,9 +198,12 @@ export function PurchaseForm({
                   <p className="label mb-2 text-graphite">{c.name}</p>
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-10">
                     {c.variants.map((v) => {
-                      const over = kind === "return" && qtyOf(qty[v.id]) > v.stock;
+                      const over = (kind === "return" && qtyOf(qty[v.id]) > v.stock) || qtyBad(qty[v.id]);
                       return (
-                        <label key={v.id} className="flex flex-col items-center border border-rule px-1 pt-1.5 focus-within:border-ink">
+                        <label
+                          key={v.id}
+                          className={`flex flex-col items-center border px-1 pt-1.5 focus-within:border-ink ${over ? "border-2 border-ink" : "border-rule"}`}
+                        >
                           <span className="tabular text-[0.8125rem]">{v.size}</span>
                           <span className="sr-only">
                             {p.name} {c.name} {v.size} adet

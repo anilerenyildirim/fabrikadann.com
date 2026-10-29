@@ -377,6 +377,20 @@ export async function updateProduct(
       if (opts.statusShown && input.status === opts.statusShown) input.status = current.status;
       await assertCategory(input.categoryId, tx);
       const supply = await getProductSupply(productId, tx);
+      if (supply.manufacturerId && input.manufacturerId !== supply.manufacturerId) {
+        // Alış fişi olan ürünün üreticisi değişirse cari ve iade akışı bozulur
+        const [received] = await tx
+          .select({ id: schema.purchaseItems.id })
+          .from(schema.purchaseItems)
+          .where(eq(schema.purchaseItems.productId, productId))
+          .limit(1);
+        if (received) {
+          throw new AdminError(
+            "Bu ürün için alış fişi var; üreticisi değiştirilemez. Farklı üreticiden gelen ürünü ayrı ürün olarak ekleyin.",
+            "manufacturerId",
+          );
+        }
+      }
       if (input.manufacturerId && input.manufacturerId !== supply.manufacturerId) {
         const m = await assertManufacturer(input.manufacturerId, tx);
         if (!m.active) throw new AdminError("Seçilen üretici pasif. Etkin bir üretici seçin.", "manufacturerId");
