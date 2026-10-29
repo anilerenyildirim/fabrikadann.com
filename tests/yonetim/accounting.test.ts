@@ -270,3 +270,21 @@ describe("dönem", () => {
     expect(rows.slice(1).map((r) => r.amount)).toEqual([-200, -100]);
   });
 });
+
+describe("dışa aktarma", () => {
+  test("dönemdeki gelir-gider ve fiş satırları", async () => {
+    const { ledgerForExport, purchaseLinesForExport } = await import("@/server/services/admin/accounting");
+    const m = await createManufacturer({ name: "Atölye" }, ctx);
+    const { variants } = await supplied(m.id, 1000);
+    await createPurchase({ kind: "purchase", manufacturerId: m.id, date: today, lines: [{ variantId: variants[0]!.id, quantity: 2, unitCost: 1000 }] }, ctx);
+    await createLedgerEntry({ kind: "expense", category: "rent", date: today, amount: 500, method: "cash", description: "=kira" }, ctx);
+    await createLedgerEntry({ kind: "expense", category: "rent", date: "2026-01-01", amount: 700, method: "cash" }, ctx);
+    const { from, to } = monthRange();
+    const ledger = await ledgerForExport(from, to);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ amount: 500, category: "rent", description: "=kira" });
+    const lines = await purchaseLinesForExport(from, to);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ quantity: 2, unit_cost: 1000, manufacturer: "Atölye", production_barcode: variants[0]!.productionBarcode });
+  });
+});

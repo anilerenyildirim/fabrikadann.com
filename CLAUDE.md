@@ -6,7 +6,7 @@ Ayakkabı e-ticaret sitesi. Spec: `docs/superpowers/specs/2026-10-25-magaza-v1-d
 
 ## Komutlar
 
-- `npm run db:up` — Postgres (Docker, 127.0.0.1:5433). `npm run db:migrate`, `npm run db:seed` (örnek ürünler, yalnızca geliştirme)
+- `npm run db:up` — Postgres (Docker, 127.0.0.1:5433; `.env`deki `DB_PORT` ile değişir — bu makinede 5434, çünkü 5433 başka projede). `npm run db:migrate`, `npm run db:seed` (örnek ürünler, yalnızca geliştirme)
 - `npm run dev` — http://localhost:3000
 - `npm test` — Vitest, gerçek Postgres test veritabanı (`TEST_DATABASE_URL`). Testler veritabanını TRUNCATE eder; farklı süreçler aynı anda aynı test veritabanını kullanmamalı.
 - `npx tsc --noEmit` — tip kontrolü
@@ -17,6 +17,7 @@ Ayakkabı e-ticaret sitesi. Spec: `docs/superpowers/specs/2026-10-25-magaza-v1-d
 - `src/server/services/*` — iş mantığı; UI'dan bağımsız (ileride mobil uygulama API'si bunu kullanacak). Sayfalar ve Server Action'lar doğrudan veritabanına değil servislere gider.
 - `src/server/auth/*` — oturum (`current.ts`: `getCurrentUser`, `requireUser`, `requireAdmin`, `getClientIp`), parola, hız sınırı, TOTP.
 - `src/server/cart-owner.ts` — sepet sahibi (kullanıcı ya da misafir çerezi).
+- `src/server/services/admin/{manufacturers,purchases,ledger,accounting}.ts` — üretici, alış/iade fişi, gelir-gider, cari ve dönem özeti. Alış fiyatı ve üretici `product_supply`, satıştaki maliyet `order_item_costs` tablosunda; vitrin sorguları bunlara dokunmaz. Üretim barkodu (`variants.production_barcode`, EAN-13, `29…`) veritabanı fonksiyonuyla üretilir.
 - `src/server/payments` — ödeme sağlayıcı arayüzü; şu an yalnızca test ödemesi (`mock`). iyzico adaptörü sonra eklenecek.
 - `src/server/storage/images.ts` — ürün görselleri (sharp ile yeniden kodlanır, `/medya/...` route'undan sunulur).
 - `src/app/(magaza)` vitrin, `src/app/yonetim` yönetim paneli.

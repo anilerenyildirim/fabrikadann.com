@@ -313,3 +313,50 @@ export async function inventoryValue() {
 }
 
 export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+// ---------- Dışa aktarma (muhasebeci için CSV) ----------
+
+/** Dönemdeki gelir-gider kayıtları, tarih sırasıyla (sayfalama yok). */
+export async function ledgerForExport(from: string, to: string) {
+  const result = await db.execute<{
+    date: string;
+    kind: "income" | "expense";
+    category: string;
+    amount: number;
+    method: string;
+    description: string;
+    manufacturer: string | null;
+  }>(sql`
+    select to_char(l.date, 'YYYY-MM-DD') as date, l.kind, l.category, l.amount, l.method, l.description, m.name as manufacturer
+    from ledger_entries l
+    left join manufacturers m on m.id = l.manufacturer_id
+    where l.date between ${from}::date and ${to}::date
+    order by l.date, l.created_at
+  `);
+  return result.rows.map((r) => ({ ...r, amount: n(r.amount) }));
+}
+
+/** Dönemdeki alış ve iade fişlerinin satırları. */
+export async function purchaseLinesForExport(from: string, to: string) {
+  const result = await db.execute<{
+    date: string;
+    number: number;
+    kind: PurchaseKind;
+    manufacturer: string;
+    product_name: string;
+    color_name: string;
+    size: string;
+    production_barcode: string;
+    quantity: number;
+    unit_cost: number;
+  }>(sql`
+    select to_char(p.date, 'YYYY-MM-DD') as date, p.number, p.kind, m.name as manufacturer,
+      i.product_name, i.color_name, i.size, i.production_barcode, i.quantity, i.unit_cost
+    from purchases p
+    join manufacturers m on m.id = p.manufacturer_id
+    join purchase_items i on i.purchase_id = p.id
+    where p.date between ${from}::date and ${to}::date
+    order by p.date, p.number, i.product_name, i.color_name, i.size
+  `);
+  return result.rows.map((r) => ({ ...r, number: n(r.number), quantity: n(r.quantity), unit_cost: n(r.unit_cost) }));
+}

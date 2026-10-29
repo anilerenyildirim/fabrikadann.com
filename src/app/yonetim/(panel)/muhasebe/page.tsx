@@ -61,6 +61,15 @@ export default async function AccountingPage({ searchParams }: Props) {
       </nav>
 
       <MonthNav base="/yonetim/muhasebe" month={month} current={istanbulDate().slice(0, 7)} />
+      <p className="-mt-4 mb-8 flex flex-wrap items-center gap-x-4 text-[0.8125rem]">
+        <span className="text-graphite">Muhasebeci için (Excel, CSV):</span>
+        <a href={`/yonetim/muhasebe/disa-aktar?ay=${month}&tur=gelir-gider`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+          Gelir-gider listesi
+        </a>
+        <a href={`/yonetim/muhasebe/disa-aktar?ay=${month}&tur=fisler`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+          Alış ve iade fişleri
+        </a>
+      </p>
 
       {(s.pairsWithoutCost > 0 || inventory.productsWithoutCost > 0 || inventory.productsWithoutManufacturer > 0) && (
         <div className="mb-8 max-w-3xl">
