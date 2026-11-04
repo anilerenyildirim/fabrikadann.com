@@ -38,6 +38,8 @@ services:
       TRENDYOL_ENV: ${TRENDYOL_ENV:-prod}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-fabrikadann <info@fabrikadann.com>}
+      # Yeni sipariş ve iade uyarısı bildirimi; boş bırakılırsa gönderilmez
+      ORDER_NOTIFY_EMAIL: ${ORDER_NOTIFY_EMAIL-kurumsal@fabrikadann.com}
       # Uygulama kısıtlı rolle bağlanır
       DATABASE_URL: postgres://fabrikadann_app:${APP_DB_PASSWORD}@db:5432/fabrikadann
       UPLOAD_DIR: /app/uploads

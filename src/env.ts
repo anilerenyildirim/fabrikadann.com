@@ -9,6 +9,7 @@ const schema = z.object({
   UPLOAD_DIR: z.string().default("./uploads"),
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default("fabrikadann <info@fabrikadann.com>"),
+  ORDER_NOTIFY_EMAIL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

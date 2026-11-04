@@ -121,8 +121,58 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
 
   if (result.status === "paid" && result.orderId) {
     await sendOrderConfirmation(result.orderId).catch((e) => logError("Sipariş e-postası gönderilemedi", e));
+    await sendStoreNotification(result.orderId, "paid").catch((e) => logError("Mağaza sipariş bildirimi gönderilemedi", e));
+  }
+  if ((result.status === "needs_refund" || result.status === "amount_mismatch") && result.orderId) {
+    await sendStoreNotification(result.orderId, "refund").catch((e) => logError("Mağaza iade uyarısı gönderilemedi", e));
   }
   return result;
+}
+
+/** Yeni sipariş bildirimi alan mağaza adresi (ORDER_NOTIFY_EMAIL; boş bırakılırsa bildirim gönderilmez). */
+export function storeNotifyAddress(): string | null {
+  const value = process.env.ORDER_NOTIFY_EMAIL ?? "kurumsal@fabrikadann.com";
+  return value.trim() || null;
+}
+
+/** Mağazaya: ödemesi alınan yeni sipariş ya da parası çekilip karşılanamayan (iade gereken) sipariş. */
+export async function sendStoreNotification(orderId: string, kind: "paid" | "refund") {
+  const to = storeNotifyAddress();
+  if (!to) return;
+  const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const order = await db.query.orders.findFirst({ where: eq(orders.id, orderId), with: { items: true } });
+  if (!order) return;
+  const a = order.shippingAddress;
+  const lines = order.items.map(
+    (i) => `- ${i.productName} / ${i.colorName} / ${i.size} × ${i.quantity}  (${i.sku})  ${formatPrice(i.unitPrice * i.quantity)}`,
+  );
+  const subject =
+    kind === "paid"
+      ? `Yeni sipariş ${order.number} — ${formatPrice(order.total)}`
+      : `İADE GEREKLİ: ${order.number} ödemesi alındı ama sipariş karşılanamadı`;
+  await sendMail({
+    to,
+    subject,
+    text: [
+      kind === "paid"
+        ? `${order.number} numaralı siparişin ödemesi alındı. Sipariş "hazırlanıyor" durumunda.`
+        : `${order.number} numaralı siparişin ödemesi alındı ama sipariş onaylanamadı (stok tükenmiş, tutar uyuşmuyor ya da çift ödeme). ` +
+          "iyzico panelinden ödemeyi iade edin ve müşteriye bilgi verin.",
+      "",
+      ...lines,
+      "",
+      `Kargo: ${order.shippingFee === 0 ? "Ücretsiz" : formatPrice(order.shippingFee)}`,
+      `Toplam: ${formatPrice(order.total)}`,
+      "",
+      "Teslimat:",
+      a.fullName,
+      a.phone,
+      `${a.line}, ${a.district}/${a.city}`,
+      `E-posta: ${order.email}`,
+      "",
+      `Yönetim panelinde: ${appUrl}/yonetim/siparisler/${order.id}`,
+    ].join("\n"),
+  });
 }
 
 async function sendOrderConfirmation(orderId: string) {
