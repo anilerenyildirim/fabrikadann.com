@@ -35,7 +35,7 @@ APP_URL=https://fabrikadann.com
 POSTGRES_PASSWORD=<uzun rastgele; yalnızca harf, rakam, - ve _ (URL'ye gömülür)>
 APP_DB_PASSWORD=<ayrı, uzun rastgele; yalnızca harf, rakam, - ve _; uygulamanın kısıtlı veritabanı rolü için>
 SESSION_SECRET=<node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))">
-PAYMENT_PROVIDER=mock          # iyzico entegrasyonu eklenince: iyzico
+PAYMENT_PROVIDER=iyzico        # geliştirmede: mock
 CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
 SMTP_URL=smtps://kullanici:parola@smtp.saglayici.com:465
 MAIL_FROM="fabrikadann <info@fabrikadann.com>"
@@ -175,7 +175,7 @@ docker compose ... up -d app
 
 ## 8. Canlıya çıkmadan önce yapılacaklar
 
-- [ ] iyzico üye işyeri anlaşması → `.env.production`'a `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_BASE_URL=https://api.iyzipay.com` ve `PAYMENT_PROVIDER=iyzico`. Adaptör (`src/server/payments/iyzico.ts`) ve dönüş adresi (`/api/odeme/iyzico`) hazır; önce sandbox anahtarlarıyla uçtan uca deneyin. Bakım betiği (5 dk) sonucu tarayıcıyla dönmeyen ödemeleri iyzico'ya sorar.
+- [x] (04.11.2026 canlıda) iyzico üye işyeri anlaşması → `.env.production`'a `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_BASE_URL=https://api.iyzipay.com` ve `PAYMENT_PROVIDER=iyzico`. Adaptör (`src/server/payments/iyzico.ts`) ve dönüş adresi (`/api/odeme/iyzico`) hazır; önce sandbox anahtarlarıyla uçtan uca deneyin. Bakım betiği (5 dk) sonucu tarayıcıyla dönmeyen ödemeleri iyzico'ya sorar.
 - [ ] Yasal metinlerin (mesafeli satış, ön bilgilendirme, KVKK, çerez, iade) avukat kontrolü; iade kargo koşulunun belirlenmesi.
 - [ ] Ayarlar'dan şirket bilgileri.
 - [ ] Gerçek ürün fotoğrafları (4:5 dikey oran, en az 1600 px genişlik önerilir).

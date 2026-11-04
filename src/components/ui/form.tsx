@@ -4,12 +4,12 @@ import type { ComponentProps, ReactNode } from "react";
 type ButtonVariant = "primary" | "secondary" | "quiet";
 
 const buttonBase =
-  "label inline-flex min-h-12 items-center justify-center gap-2 px-6 transition-colors duration-150 disabled:cursor-not-allowed select-none";
+  "label inline-flex min-h-12 items-center justify-center gap-2 px-6 transition-[color,background-color,border-color,text-decoration-color,scale] duration-150 enabled:active:scale-[0.985] disabled:cursor-not-allowed select-none";
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary: "bg-ink text-paper hover:bg-night disabled:bg-ash",
   secondary: "border border-ink bg-paper text-ink hover:bg-fog disabled:border-ash disabled:text-ash",
-  quiet: "text-ink underline-offset-4 hover:underline disabled:text-ash px-0 min-h-11",
+  quiet: "text-ink underline decoration-transparent underline-offset-4 hover:decoration-current disabled:text-ash px-0 min-h-11",
 };
 
 export function buttonClass(variant: ButtonVariant = "primary", full = false, extra = "") {

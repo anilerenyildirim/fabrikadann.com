@@ -25,19 +25,19 @@ export function ProductCard({
           image={product.image && { ...product.image, alt: "" }}
           sizes={sizes}
           priority={priority}
-          className="block h-auto w-full"
+          className="block h-auto w-full transition-transform duration-700 ease-(--ease-cut) md:group-hover:scale-[1.025]"
         />
         {product.hoverImage && (
           // display:none iken tembel yüklenen görsel indirilmez: mobilde ikinci görsel yüklenmez
           <ProductImage
             image={{ ...product.hoverImage, alt: "" }}
             sizes={sizes}
-            className="absolute inset-0 hidden h-full w-full opacity-0 transition-opacity duration-300 md:block group-hover:opacity-100"
+            className="absolute inset-0 hidden h-full w-full opacity-0 transition-[opacity,scale] duration-500 ease-(--ease-cut) md:block group-hover:scale-[1.025] group-hover:opacity-100"
           />
         )}
       </div>
       <div className="px-2 pb-2 pt-2.5 md:px-3">
-        <p className="text-[0.75rem] leading-snug">{product.name}</p>
+        <p className="text-[0.75rem] leading-snug underline decoration-transparent underline-offset-2 transition-[text-decoration-color] duration-200 group-hover:decoration-current">{product.name}</p>
         <div className="mt-0.5">
           <Price price={product.price} />
         </div>

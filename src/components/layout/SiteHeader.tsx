@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Wordmark } from "@/components/brand/Logo";
+import { useTrackNavigation } from "@/components/product/BackLink";
 
 export type HeaderCategory = { name: string; slug: string };
 
@@ -20,6 +21,7 @@ export function SiteHeader({ categories, cartCount, signedIn, announcement }: Pr
   const [scrolled, setScrolled] = useState(false);
   // Ana sayfada başlık görselin üstünde şeffaf durur
   const overlay = pathname === "/" && !scrolled && !menuOpen;
+  useTrackNavigation(pathname);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -55,7 +57,7 @@ export function SiteHeader({ categories, cartCount, signedIn, announcement }: Pr
           </button>
 
           <Link href="/" className="flex min-h-11 items-center px-1" aria-label="fabrikadann ana sayfa">
-            <Wordmark className="h-[13px] w-auto md:h-[17px]" />
+            <Wordmark className="h-[13px] w-auto md:h-[1.0625rem]" />
           </Link>
 
           <nav className="ml-auto flex items-center" aria-label="Hesap ve sepet">
@@ -151,7 +153,10 @@ function MenuDrawer({
             <span className="sr-only md:not-sr-only">Kapat</span>
           </button>
         </div>
-        <nav className="flex-1 overflow-y-auto px-6 pb-10 pt-6 md:px-10" aria-label="Kategoriler">
+        <nav
+          className={`menu-liste flex-1 overflow-y-auto px-6 pb-10 pt-6 md:px-10 ${open ? "acik" : ""}`}
+          aria-label="Kategoriler"
+        >
           <ul className="space-y-1">
             <li>
               <MenuLink href="/urunler" big>
@@ -193,8 +198,8 @@ function MenuLink({ href, children, big = false }: { href: string; children: Rea
   return (
     <Link
       href={href}
-      className={`flex min-h-11 items-center hover:underline hover:underline-offset-4 ${
-        big ? "wide text-[0.9375rem] font-[350]" : "label text-graphite"
+      className={`flex min-h-11 items-center underline decoration-transparent underline-offset-4 transition-[color,text-decoration-color,translate] duration-200 ease-(--ease-cut) hover:decoration-current ${
+        big ? "wide text-[0.9375rem] font-[350] hover:translate-x-1" : "label text-graphite hover:text-ink"
       }`}
     >
       {children}
@@ -204,7 +209,7 @@ function MenuLink({ href, children, big = false }: { href: string; children: Rea
 
 const iconProps = {
   viewBox: "0 0 24 24",
-  className: "size-[22px]",
+  className: "size-[1.375rem]",
   fill: "none",
   stroke: "currentColor",
   strokeWidth: 1.2,

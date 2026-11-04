@@ -35,6 +35,25 @@
     overflow-x: clip;
   }
 
+  /* Büyük ekranlarda (ör. 24" 1920 px) yazı ve boşluklar biraz büyür; dizüstü ve telefon aynı kalır.
+     Tailwind ölçüleri rem olduğu için tüm arayüz orantılı büyür; kırılım noktaları etkilenmez. */
+  @media (min-width: 1680px) {
+    html {
+      font-size: 112.5%;
+    }
+  }
+  @media (min-width: 1900px) {
+    html {
+      font-size: 118.75%;
+    }
+  }
+
+  a,
+  summary {
+    transition-property: color, background-color, border-color, text-decoration-color, opacity;
+    transition-duration: 150ms;
+  }
+
   body {
     min-height: 100svh;
     font-size: 0.875rem;
@@ -164,6 +183,32 @@
 .belir {
   animation: belir 0.6s ease 0.9s backwards;
 }
+
+/* Sayfa geçişi: yalnızca opaklık (transform sabit konumlu çubukların yerleşimini bozar) */
+@keyframes sayfa-gir {
+  from {
+    opacity: 0;
+  }
+}
+.sayfa-gir {
+  animation: sayfa-gir 0.32s ease-out backwards;
+}
+
+/* Menü açılınca bağlantılar sırayla kayarak belirir */
+@keyframes menu-gir {
+  from {
+    opacity: 0;
+    transform: translateX(-0.75rem);
+  }
+}
+.menu-liste.acik li {
+  animation: menu-gir 0.45s var(--ease-cut) backwards;
+}
+.menu-liste.acik li:nth-child(2) { animation-delay: 40ms; }
+.menu-liste.acik li:nth-child(3) { animation-delay: 80ms; }
+.menu-liste.acik li:nth-child(4) { animation-delay: 120ms; }
+.menu-liste.acik li:nth-child(5) { animation-delay: 160ms; }
+.menu-liste.acik li:nth-child(n + 6) { animation-delay: 200ms; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

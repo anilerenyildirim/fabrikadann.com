@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { BackLink } from "@/components/product/BackLink";
 import { Disclosure } from "@/components/product/Disclosure";
 import { Gallery } from "@/components/product/Gallery";
 import { ProductJsonLd } from "@/components/product/ProductJsonLd";
@@ -79,6 +80,18 @@ export default async function ProductPage({ params, searchParams }: Props) {
     <>
       <PurchaseProvider key={color.id} sizes={color.variants}>
         <div>
+          {/* Telefonda galeri ekranı kapladığı için geri dönüş ve kategori üstte */}
+          <div className="flex items-center justify-between gap-4 px-4 md:hidden">
+            <BackLink href={product.category ? `/kategori/${product.category.slug}` : "/urunler"} />
+            {product.category && (
+              <Link
+                href={`/kategori/${product.category.slug}`}
+                className="label inline-flex min-h-11 min-w-0 items-center truncate text-graphite hover:text-ink"
+              >
+                <span className="truncate">{product.category.name}</span>
+              </Link>
+            )}
+          </div>
           <div className="md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_28rem]">
             <Gallery images={color.images} productName={product.name} colorName={color.name} />
 
