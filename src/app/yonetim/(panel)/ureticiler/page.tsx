@@ -21,6 +21,9 @@ export default async function ManufacturersPage() {
         description="Ürünleri aldığınız atölyeler ve cari hesapları. Borç = devir + alış fişleri − iadeler − ödemeler."
         actions={
           <>
+            <ButtonLink href="/yonetim/urunler/tedarik" variant="secondary" className="min-h-11 px-4">
+              Ürünlere üretici ata
+            </ButtonLink>
             <ButtonLink href="/yonetim/muhasebe/fisler/yeni" variant="secondary" className="min-h-11 px-4">
               Mal alımı gir
             </ButtonLink>

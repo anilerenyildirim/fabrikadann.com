@@ -83,8 +83,8 @@ export default async function AccountingPage({ searchParams }: Props) {
             {inventory.productsWithoutManufacturer > 0 && (
               <span className="block">{inventory.productsWithoutManufacturer} üründe üretici seçilmemiş.</span>
             )}
-            <Link href="/yonetim/urunler" className="mt-1 inline-flex min-h-11 items-center underline underline-offset-4">
-              Ürünlere git
+            <Link href="/yonetim/urunler/tedarik?eksik=1" className="mt-1 inline-flex min-h-11 items-center underline underline-offset-4">
+              Üretici ve alış fiyatlarını toplu gir
             </Link>
           </FormNotice>
         </div>
