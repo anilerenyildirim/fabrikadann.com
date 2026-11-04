@@ -39,6 +39,10 @@ PAYMENT_PROVIDER=iyzico        # geliştirmede: mock
 CLIENT_IP_HEADER=x-real-ip     # her zaman bu; Cloudflare için deploy/Caddyfile'daki trusted_proxies bloğunu açın
 SMTP_URL=smtps://kullanici:parola@smtp.saglayici.com:465
 MAIL_FROM="fabrikadann <info@fabrikadann.com>"
+ORDER_NOTIFY_EMAIL=kurumsal@fabrikadann.com   # yeni sipariş ve iade uyarısı; boş bırakılırsa gönderilmez
+IYZICO_API_KEY=                # iyzico panel → Ayarlar → Firma Ayarları → API Anahtarları
+IYZICO_SECRET_KEY=
+IYZICO_BASE_URL=https://api.iyzipay.com
 # Trendyol ortak stok (isteğe bağlı; bkz. §5c)
 TRENDYOL_SELLER_ID=
 TRENDYOL_API_KEY=
@@ -135,6 +139,16 @@ kargolanmamış adetler sayımdan düşülür, kargolanmış ama henüz düşül
 
 Önce test ortamında deneyin: `TRENDYOL_ENV=stage` ve test hesabı bilgileri (test ortamı için sunucunun
 çıkış IP'si Trendyol çağrı merkezine tanıtılmalı). Denenecekler §8'de.
+
+### Trendyol'dan ürün aktarma
+
+Panel → Ürünler → **Trendyol'dan aktar**. Seçilen ürünler (tek seferde en fazla 8) taslak olarak gelir:
+renk, numara, Trendyol barkodu ve stoğu, görseller, açıklama (düz metin), Trendyol'daki kategori adı.
+Fiyat Trendyol satış fiyatının %25 altıdır (tam liraya yuvarlanır); oran ürün formundaki
+"Trendyol indirimi (%)" alanından ürün başına değişir, boşaltılırsa fiyat elle girilir. Saatlik fiyat
+senkronu indirimli ürünlerin site fiyatını Trendyol fiyatından yeniden hesaplar; hesaplanan fiyat %30'dan
+fazla değişecekse uygulanmaz, panelde uyarı çıkar. Aktarılan ürünlere üretici ve alış fiyatını
+Ürünler → Üretici ve alış fiyatı sayfasından toplu girin.
 
 ## 6. Yedekleme (zorunlu)
 
