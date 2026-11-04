@@ -153,7 +153,11 @@ export default async function EditProductPage({ params, searchParams }: Props) {
             details: product.details,
             categoryId: product.categoryId ?? "",
             price: priceInput(product.price),
-            trendyolPrice: priceInput(product.trendyolPrice),
+            // İndirim tanımlıysa alan, indirimin hesaplandığı Trendyol fiyatını gösterir
+            trendyolPrice: priceInput(
+              product.trendyolDiscount !== null ? (product.trendyolSalePrice ?? product.trendyolPrice) : product.trendyolPrice,
+            ),
+            trendyolDiscount: product.trendyolDiscount === null ? "" : String(product.trendyolDiscount),
             status: product.status,
             featured: product.featured,
             manufacturerId: product.manufacturerId ?? "",

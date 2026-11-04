@@ -50,8 +50,15 @@ const foldSql = (col: SQL | AnyPgColumn) =>
 /** LIKE içindeki özel karakterleri kaçırır. */
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
+/** Vitrin kategorileri: yalnızca yayında ürünü olanlar (Trendyol aktarımının açtığı boş kategori menüde görünmez). */
 export async function listCategories() {
-  return db.select().from(categories).orderBy(asc(categories.position), asc(categories.name));
+  return db
+    .select()
+    .from(categories)
+    .where(
+      sql`exists (select 1 from ${products} p where p.category_id = ${categories.id} and p.status = 'active')`,
+    )
+    .orderBy(asc(categories.position), asc(categories.name));
 }
 
 export async function getCategoryBySlug(slug: string) {

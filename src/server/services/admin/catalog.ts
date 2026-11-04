@@ -9,6 +9,7 @@ import { compareSizes, foldForSearch, type ImageRef } from "../catalog";
 import { reservedByVariant, setPhysicalCount, setStock, StaleStockError } from "../stock";
 import { AdminError, assertAdmin, isUniqueViolation, reorder, type AdminContext } from "./context";
 import { assertManufacturer, getProductSupply, writeProductSupply } from "./manufacturers";
+import { discountedPrice, MAX_TRENDYOL_DISCOUNT } from "@/server/trendyol/products";
 
 const { products, productColors, productImages, variants, categories, orderItems } = schema;
 
@@ -44,6 +45,14 @@ export const productInputSchema = z.object({
   categoryId: z.uuid("Kategori seçin.").nullable().default(null),
   price: priceSchema,
   trendyolPrice: priceSchema.nullable().default(null),
+  /** Doluysa site fiyatı Trendyol fiyatından bu oranda indirimle hesaplanır (fiyat alanı yok sayılır) */
+  trendyolDiscount: z
+    .number({ error: "İndirimi 0 ile 90 arasında tam sayı olarak yazın." })
+    .int("İndirimi 0 ile 90 arasında tam sayı olarak yazın.")
+    .min(0, "İndirim 0'dan küçük olamaz.")
+    .max(MAX_TRENDYOL_DISCOUNT, "İndirim en fazla %90 olabilir.")
+    .nullable()
+    .default(null),
   status: z.enum(["draft", "active", "archived"], { error: "Durum seçin." }).default("draft"),
   featured: z.boolean().default(false),
   // Yalnızca yönetim: product_supply tablosuna yazılır
@@ -117,7 +126,7 @@ export function slugBase(input: string, fallback = "urun"): string {
 }
 
 /** base, base-2, base-3 … içinden boş olan ilkini döner. */
-async function freeSlug(
+export async function freeSlug(
   kind: "product" | "category",
   base: string,
   excludeId: string | null,
@@ -283,6 +292,27 @@ async function assertCategory(categoryId: string | null, tx: DbOrTx) {
   if (!row) throw new AdminError("Seçilen kategori bulunamadı. Listeden yeniden seçin.", "categoryId");
 }
 
+/**
+ * Trendyol indirimi girildiyse fiyatları hesaplar: site fiyatı = Trendyol fiyatı − %indirim, karşılaştırma fiyatı
+ * Trendyol fiyatı (siteden yüksekse). Trendyol fiyatı formdan, yoksa senkronun son okuduğu değerden alınır.
+ */
+function applyTrendyolDiscount(
+  input: { price: number; trendyolPrice: number | null; trendyolDiscount: number | null },
+  lastSalePrice: number | null,
+): number | null {
+  if (input.trendyolDiscount === null) {
+    checkTrendyolPrice(input.price, input.trendyolPrice);
+    return lastSalePrice;
+  }
+  const base = input.trendyolPrice ?? lastSalePrice;
+  if (!base) {
+    throw new AdminError("İndirimle fiyat hesaplamak için Trendyol fiyatını yazın ya da indirimi boş bırakın.", "trendyolDiscount");
+  }
+  input.price = discountedPrice(base, input.trendyolDiscount);
+  input.trendyolPrice = base > input.price ? base : null;
+  return base;
+}
+
 function checkTrendyolPrice(price: number, trendyolPrice: number | null) {
   // Trendyol fiyatı bilgi amaçlı; sitede daha düşük olmalı ki karşılaştırma anlamlı olsun
   if (trendyolPrice !== null && trendyolPrice <= price) {
@@ -301,7 +331,7 @@ export async function createProduct(raw: ProductInput, ctx: AdminContext): Promi
   if (input.status === "active") {
     throw new AdminError("Yeni ürün taslak olarak oluşturulur; görsel ve numara ekledikten sonra yayına alın.", "status");
   }
-  checkTrendyolPrice(input.price, input.trendyolPrice);
+  const trendyolSalePrice = applyTrendyolDiscount(input, null);
   await assertCategory(input.categoryId, db);
   if (!input.manufacturerId) throw new AdminError("Üretici seçin. Listede yoksa önce Üreticiler sayfasından ekleyin.", "manufacturerId");
   const manufacturer = await assertManufacturer(input.manufacturerId, db);
@@ -322,6 +352,8 @@ export async function createProduct(raw: ProductInput, ctx: AdminContext): Promi
             categoryId: input.categoryId,
             price: input.price,
             trendyolPrice: input.trendyolPrice,
+            trendyolSalePrice,
+            trendyolDiscount: input.trendyolDiscount,
             status: input.status,
             featured: input.featured,
           })
@@ -363,18 +395,27 @@ export async function updateProduct(
   id: string,
   raw: ProductInput,
   ctx: AdminContext,
-  opts: { statusShown?: ProductStatus } = {},
+  opts: { statusShown?: ProductStatus; trendyolPriceShown?: number | null } = {},
 ): Promise<{ slug: string }> {
   await assertAdmin(ctx);
   const productId = parseId(id, "Ürün");
   const input = parseOrThrow(productInputSchema, raw);
-  checkTrendyolPrice(input.price, input.trendyolPrice);
 
   try {
     return await db.transaction(async (tx) => {
       const [current] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
       if (!current) throw new AdminError("Ürün bulunamadı.");
       if (opts.statusShown && input.status === opts.statusShown) input.status = current.status;
+      // Form açıkken saatlik senkron Trendyol fiyatını değiştirmiş olabilir: alan elle değişmediyse güncel değer esas alınır
+      if (
+        input.trendyolDiscount !== null &&
+        opts.trendyolPriceShown !== undefined &&
+        input.trendyolPrice === opts.trendyolPriceShown &&
+        current.trendyolSalePrice !== null
+      ) {
+        input.trendyolPrice = current.trendyolSalePrice;
+      }
+      const trendyolSalePrice = applyTrendyolDiscount(input, current.trendyolSalePrice);
       await assertCategory(input.categoryId, tx);
       const supply = await getProductSupply(productId, tx);
       if (supply.manufacturerId && input.manufacturerId !== supply.manufacturerId) {
@@ -426,6 +467,8 @@ export async function updateProduct(
           categoryId: input.categoryId,
           price: input.price,
           trendyolPrice: input.trendyolPrice,
+          trendyolSalePrice,
+          trendyolDiscount: input.trendyolDiscount,
           status: input.status,
           featured: input.featured,
         })
@@ -855,10 +898,19 @@ export function parseSizeInput(input: string): string[] {
 /** Otomatik SKU: FD-<ürün kimliği kısaltması>-<renk sırası>-<numara>, ör. FD-3F2A1C-1-38.5 */
 export function buildSku(productId: string, colorIndex: number, size: string): string {
   const short = productId.replace(/-/g, "").slice(0, 6).toUpperCase();
-  return `FD-${short}-${colorIndex + 1}-${size}`;
+  return `FD-${short}-${colorIndex + 1}-${skuPart(size)}`;
 }
 
-async function freeSku(base: string, tx: DbOrTx, excludeId: string | null = null): Promise<string> {
+// SKU kuralı A-Z, 0-9, nokta, alt çizgi, tire: "Tek Ebat" → "TEK-EBAT", "36/37" → "36-37", "38,5" → "38.5"
+function skuPart(size: string): string {
+  const ascii = size
+    .toLocaleUpperCase("tr-TR")
+    .replace(/[ÇĞİÖŞÜ]/g, (c) => ({ Ç: "C", Ğ: "G", İ: "I", Ö: "O", Ş: "S", Ü: "U" })[c]!)
+    .replace(/,/g, ".");
+  return ascii.replace(/[^A-Z0-9.]+/g, "-").replace(/^-+|-+$/g, "") || "0";
+}
+
+export async function freeSku(base: string, tx: DbOrTx, excludeId: string | null = null): Promise<string> {
   const rows = await tx
     .select({ sku: variants.sku })
     .from(variants)
@@ -964,7 +1016,11 @@ export async function updateVariant(
     if (barcodeClash) throw new AdminError("Bu barkod başka bir numarada kullanılıyor.", "barcode");
   }
   try {
-    await db.update(variants).set({ sku, barcode }).where(eq(variants.id, vid));
+    await db
+      .update(variants)
+      // Barkod değişince Trendyol aktarım zamanı yeni barkodun siparişleri için geçerli değildir
+      .set(current.barcode === barcode ? { sku, barcode } : { sku, barcode, trendyolImportedAt: null })
+      .where(eq(variants.id, vid));
   } catch (e) {
     if (isUniqueViolation(e)) {
       // Eşzamanlı kayıt: hangi benzersiz alanın çakıştığına bakılır

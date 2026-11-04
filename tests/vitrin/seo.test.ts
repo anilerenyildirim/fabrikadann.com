@@ -54,8 +54,10 @@ describe("sitemap", () => {
   });
 
   test("yalnızca yayındaki ürünler ve kategoriler; taslak ürün yok", async () => {
-    await db.insert(schema.categories).values({ name: "Bot", slug: "bot" });
-    const { product: active } = await makeProduct();
+    const [bot] = await db.insert(schema.categories).values({ name: "Bot", slug: "bot" }).returning();
+    // Yayında ürünü olmayan kategori (ör. Trendyol aktarımıyla açılıp taslakta kalan) listelenmez
+    await db.insert(schema.categories).values({ name: "Terlik", slug: "terlik" });
+    const { product: active } = await makeProduct({ categoryId: bot!.id });
     const { product: draft } = await makeProduct({ status: "draft" });
     const { product: archived } = await makeProduct({ status: "archived" });
 
@@ -63,6 +65,7 @@ describe("sitemap", () => {
     const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
     const urls = (await sitemap()).map((e) => e.url);
     expect(urls).toContain(`${base}/kategori/bot`);
+    expect(urls).not.toContain(`${base}/kategori/terlik`);
     expect(urls).toContain(`${base}/urun/${active.slug}`);
     expect(urls).not.toContain(`${base}/urun/${draft.slug}`);
     expect(urls).not.toContain(`${base}/urun/${archived.slug}`);

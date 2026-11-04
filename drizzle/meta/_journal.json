@@ -71,6 +71,13 @@
       "when": 1793314041350,
       "tag": "0009_muhasebe_anlik",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793811208190,
+      "tag": "0010_trendyol_aktarim",
+      "breakpoints": true
     }
   ]
 }

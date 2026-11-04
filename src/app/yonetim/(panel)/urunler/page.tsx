@@ -47,7 +47,14 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Ürünler"
         description="Ürün silinmez, arşivlenir; böylece eski siparişlerin kaydı bozulmaz."
-        actions={<ButtonLink href="/yonetim/urunler/yeni">Yeni ürün</ButtonLink>}
+        actions={
+          <>
+            <ButtonLink href="/yonetim/urunler/trendyol-aktar" variant="secondary">
+              Trendyol'dan aktar
+            </ButtonLink>
+            <ButtonLink href="/yonetim/urunler/yeni">Yeni ürün</ButtonLink>
+          </>
+        }
       />
       <SearchForm
         action="/yonetim/urunler"

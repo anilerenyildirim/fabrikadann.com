@@ -154,6 +154,12 @@ export const products = pgTable(
     price: integer("price").notNull(),
     // Trendyol'daki satış fiyatı; yalnızca bilgi amaçlı gösterilir
     trendyolPrice: integer("trendyol_price"),
+    // Trendyol'dan en son okunan satış fiyatı (karşılaştırma kaldırılsa da saklanır); indirim bundan hesaplanır
+    trendyolSalePrice: integer("trendyol_sale_price"),
+    // Doluysa site fiyatı = Trendyol satış fiyatı − %indirim (saatlik senkronda yeniden hesaplanır); boşsa fiyat elle
+    trendyolDiscount: integer("trendyol_discount"),
+    // Trendyol'dan aktarılan ürünün productMainId'si (aynı ürün iki kez aktarılmaz)
+    trendyolMainId: text("trendyol_main_id"),
     status: productStatus("status").notNull().default("draft"),
     featured: boolean("featured").notNull().default(false),
     createdAt: createdAt(),
@@ -162,7 +168,9 @@ export const products = pgTable(
   (t) => [
     uniqueIndex("products_slug_idx").on(t.slug),
     index("products_status_idx").on(t.status),
+    uniqueIndex("products_trendyol_main_id_idx").on(t.trendyolMainId).where(sql`${t.trendyolMainId} is not null`),
     check("products_price_positive", sql`${t.price} > 0`),
+    check("products_trendyol_discount_range", sql`${t.trendyolDiscount} between 0 and 90`),
   ],
 );
 
@@ -211,6 +219,8 @@ export const variants = pgTable(
       .notNull()
       .default(sql`next_production_barcode()`),
     stock: integer("stock").notNull().default(0),
+    // Trendyol'dan aktarıldıysa anı: bundan önce verilmiş Trendyol siparişleri aktarılan stokta zaten düşülmüştür
+    trendyolImportedAt: timestamp("trendyol_imported_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("variants_production_barcode_idx").on(t.productionBarcode),

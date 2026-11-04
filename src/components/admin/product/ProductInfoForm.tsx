@@ -16,6 +16,7 @@ export type ProductInfoValues = {
   categoryId: string;
   price: string;
   trendyolPrice: string;
+  trendyolDiscount: string;
   status: "draft" | "active" | "archived";
   featured: boolean;
   manufacturerId: string;
@@ -30,6 +31,7 @@ const FIELDS = [
   "categoryId",
   "price",
   "trendyolPrice",
+  "trendyolDiscount",
   "status",
   "featured",
   "manufacturerId",
@@ -66,6 +68,8 @@ export function ProductInfoForm({
       <StateNotice state={state} />
       <LooseFieldErrors state={state} known={FIELDS} />
       {initial.productId && <input type="hidden" name="productId" value={initial.productId} />}
+      {/* Gösterilen Trendyol fiyatı: elle değiştirilmediyse sunucu güncel (senkronlanan) değeri kullanır */}
+      {initial.productId && <input type="hidden" name="trendyolPriceShown" value={initial.trendyolPrice ?? ""} />}
 
       <TextField
         label="Ürün adı"
@@ -114,6 +118,17 @@ export function ProductInfoForm({
           defaultValue={v("trendyolPrice")}
           error={e.trendyolPrice}
           hint="Girilirse ürün sayfasında iki kanalın fiyatı bilgi olarak gösterilir. Trendyol senkronu açıksa barkodlardan saatte bir otomatik güncellenir."
+          className="[&_input]:[font-variant-numeric:tabular-nums]"
+        />
+        <TextField
+          label="Trendyol indirimi (%, isteğe bağlı)"
+          name="trendyolDiscount"
+          inputMode="numeric"
+          maxLength={3}
+          placeholder="25"
+          defaultValue={v("trendyolDiscount")}
+          error={e.trendyolDiscount}
+          hint="Girilirse fiyat alanı kullanılmaz: site fiyatı = Trendyol fiyatı − bu oran (tam liraya yuvarlanır). Trendyol fiyatı saatlik senkronda değişince site fiyatı da yeniden hesaplanır. Boş bırakırsanız fiyatı elle girersiniz."
           className="[&_input]:[font-variant-numeric:tabular-nums]"
         />
       </div>

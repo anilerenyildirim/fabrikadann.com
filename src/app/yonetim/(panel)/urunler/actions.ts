@@ -70,6 +70,19 @@ const productForm = z.object({
       }
       return k;
     }),
+  trendyolDiscount: z
+    .string()
+    .trim()
+    .default("")
+    .transform((s, ctx) => {
+      const t = s.replace(/^%/, "").replace(/%$/, "").trim();
+      if (!t) return null;
+      if (!/^\d{1,2}$/.test(t)) {
+        ctx.addIssue({ code: "custom", message: "İndirimi 0 ile 90 arasında tam sayı olarak yazın (ör. 25) ya da boş bırakın." });
+        return z.NEVER;
+      }
+      return Number(t);
+    }),
   status: z.enum(["draft", "active", "archived"], { error: "Durum seçin." }).default("draft"),
   featured: z
     .string()
@@ -115,8 +128,14 @@ export async function updateProductAction(_prev: FormState, form: FormData): Pro
   const parsed = parseForm(productForm, form);
   if (!parsed.ok) return parsed.state;
   const statusShown = productStatus.safeParse(form.get("statusShown"));
+  const shownText = String(form.get("trendyolPriceShown") ?? "").trim();
+  const shownKurus = shownText ? parsePriceToKurus(shownText) : null;
+  const trendyolPriceShown = shownKurus === null || !Number.isNaN(shownKurus) ? shownKurus : undefined;
   try {
-    await updateProduct(productId.data, parsed.data, ctx, { statusShown: statusShown.success ? statusShown.data : undefined });
+    await updateProduct(productId.data, parsed.data, ctx, {
+      statusShown: statusShown.success ? statusShown.data : undefined,
+      trendyolPriceShown: form.has("trendyolPriceShown") ? trendyolPriceShown : undefined,
+    });
   } catch (e) {
     return errorState(e, parsed.values, "urun-guncelle");
   }

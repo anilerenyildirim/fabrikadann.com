@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { TrendyolLine } from "@/server/db/schema";
 
 /**
- * Trendyol satıcı API'si (yalnızca ortak stok için gereken uçlar).
+ * Trendyol satıcı API'si (ortak stok, fiyat ve ürün aktarımı için gereken uçlar).
  * Kimlik: Basic (API key:secret) + "{sellerId} - SelfIntegration" User-Agent.
  *
  * Ortam değişkenleri: TRENDYOL_SELLER_ID, TRENDYOL_API_KEY, TRENDYOL_API_SECRET,
@@ -122,7 +122,77 @@ const pricesSchema = z.object({
     .transform((c) => c ?? []),
 });
 
-export type BatchItemResult = { barcode: string; status: "SUCCESS" | "FAILED" | "IN_PROGRESS"; reasons: string[] };
+// Onaylı ürünler (Product V2: GET /integration/product/sellers/{sellerId}/products/approved).
+// Her içerik (contentId) bir renk; aynı productMainId'li içerikler aynı ürünün renkleri. Numara ve renk attributes'ta.
+const attributeSchema = z.object({
+  attributeName: z.string().nullish(),
+  attributeValue: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
+});
+const attributesSchema = z
+  .array(attributeSchema)
+  .nullish()
+  .catch(null)
+  .transform((a) => a ?? []);
+
+const approvedVariantSchema = z.object({
+  barcode: z.string().trim().min(1).max(64),
+  attributes: attributesSchema,
+  onSale: z.boolean().nullish(),
+  archived: z.boolean().nullish(),
+  blacklisted: z.boolean().nullish(),
+  locked: z.boolean().nullish(),
+  stock: z.object({ quantity: z.number().nullish() }).nullish(),
+  price: z.object({ salePrice: z.number().nonnegative().nullish(), listPrice: z.number().nullish() }).nullish(),
+});
+
+const approvedContentSchema = z.object({
+  contentId: idSchema.nullish(),
+  productMainId: z.string().trim().min(1).max(200),
+  title: z.string().nullish(),
+  description: z.string().nullish(),
+  category: z.object({ name: z.string().nullish() }).nullish(),
+  brand: z.object({ name: z.string().nullish() }).nullish(),
+  images: z
+    .array(z.object({ url: z.string().nullish() }))
+    .nullish()
+    .catch(null)
+    .transform((i) => (i ?? []).map((x) => x.url).filter((u): u is string => !!u)),
+  attributes: attributesSchema,
+  variants: z.array(z.unknown()).nullish().transform((v) => v ?? []),
+});
+
+const approvedPageSchema = z.object({
+  content: z.array(z.unknown()).nullish().transform((c) => c ?? []),
+  totalPages: z.number().int().nonnegative().nullish(),
+  page: z.number().int().nullish(),
+});
+
+export type TrendyolAttribute = { attributeName?: string | null; attributeValue: string | null };
+
+export type TrendyolApprovedVariant = {
+  barcode: string;
+  attributes: TrendyolAttribute[];
+  onSale: boolean;
+  archived: boolean;
+  /** Adet (negatif ya da bilinmeyen 0) */
+  quantity: number;
+  /** Satış fiyatı, kuruş (bilinmiyorsa null) */
+  salePrice: number | null;
+};
+
+export type TrendyolApprovedContent = {
+  contentId: string | null;
+  productMainId: string;
+  title: string;
+  description: string;
+  categoryName: string | null;
+  brandName: string | null;
+  images: string[];
+  attributes: TrendyolAttribute[];
+  variants: TrendyolApprovedVariant[];
+};
+
+export type BatchItemResult ={ barcode: string; status: "SUCCESS" | "FAILED" | "IN_PROGRESS"; reasons: string[] };
 
 export type InventoryItem = { barcode: string; quantity: number };
 
@@ -218,6 +288,63 @@ export class TrendyolClient {
       }
     }
     return prices;
+  }
+
+  /**
+   * Onaylı ürünlerin bir sayfası (en fazla 100 içerik; page × size ≤ 10.000). productMainId verilirse yalnızca o ürün.
+   * Biçimi bozuk içerik ya da numara atlanır ve sayılır.
+   */
+  async approvedProducts(input: { page?: number; size?: number; productMainId?: string } = {}) {
+    const size = Math.min(Math.max(input.size ?? 100, 1), 100);
+    const page = Math.max(input.page ?? 0, 0);
+    if ((page + 1) * size > 10_000) throw new TrendyolError("Trendyol en fazla 10.000 ürünü sayfalı listeler");
+    const q = new URLSearchParams({ page: String(page), size: String(size) });
+    if (input.productMainId) q.set("productMainId", input.productMainId);
+    const raw = parseResponse(
+      approvedPageSchema,
+      await this.request("GET", `/integration/product/sellers/${this.cfg.sellerId}/products/approved?${q}`),
+      "ürün listesi",
+    );
+    const contents: TrendyolApprovedContent[] = [];
+    let skipped = 0;
+    for (const item of raw.content) {
+      const c = approvedContentSchema.safeParse(item);
+      if (!c.success) {
+        skipped++;
+        continue;
+      }
+      const variants: TrendyolApprovedVariant[] = [];
+      for (const rv of c.data.variants) {
+        const v = approvedVariantSchema.safeParse(rv);
+        if (!v.success) {
+          skipped++;
+          continue;
+        }
+        const qty = v.data.stock?.quantity;
+        const sale = v.data.price?.salePrice;
+        variants.push({
+          barcode: v.data.barcode,
+          attributes: v.data.attributes,
+          onSale: v.data.onSale ?? false,
+          archived: !!(v.data.archived || v.data.blacklisted),
+          quantity: qty && Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0,
+          salePrice: sale && Number.isFinite(sale) ? Math.round(sale * 100) : null,
+        });
+      }
+      contents.push({
+        contentId: c.data.contentId ?? null,
+        productMainId: c.data.productMainId,
+        title: c.data.title?.trim() ?? "",
+        description: c.data.description ?? "",
+        categoryName: c.data.category?.name?.trim() || null,
+        brandName: c.data.brand?.name?.trim() || null,
+        images: c.data.images,
+        attributes: c.data.attributes,
+        variants,
+      });
+    }
+    const totalPages = raw.totalPages ?? 1;
+    return { contents, skipped, hasMore: page + 1 < totalPages && (page + 2) * size <= 10_000 };
   }
 
   async batchResult(batchRequestId: string): Promise<BatchItemResult[]> {

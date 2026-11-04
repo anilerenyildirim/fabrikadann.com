@@ -4,6 +4,7 @@ import { describeError } from "@/server/log";
 import { TrendyolError, trendyolConfig, type TrendyolClient, type TrendyolPackage } from "@/server/trendyol/client";
 import { audit } from "./audit";
 import { returnStock } from "./stock";
+import { discountedPrice } from "@/server/trendyol/products";
 
 /**
  * Trendyol ile ortak stok. Kaynak sitedeki `variants.stock`:
@@ -52,7 +53,19 @@ export type SyncState = {
   priceWarnings?: PriceWarning[];
 };
 
-export type PriceWarning = { productId: string; name: string; price: number; trendyolPrice: number };
+export type PriceWarning = {
+  productId: string;
+  name: string;
+  price: number;
+  trendyolPrice: number;
+  /** "jump": indirimli üründe yeni site fiyatı %30'dan fazla değişecekti; uygulanmadı, yönetici kontrol etmeli */
+  kind?: "cheaper" | "jump";
+  /** kind = "jump" ise uygulanmayan site fiyatı */
+  proposedPrice?: number;
+};
+
+// İndirimli üründe Trendyol'daki yanlış girilmiş bir fiyat site fiyatını kendiliğinden bozmasın
+const MAX_AUTO_PRICE_CHANGE = 0.3;
 
 export type SyncSummary = {
   baseline: boolean;
@@ -286,7 +299,10 @@ async function applyOrder(orderNumber: string, baselineAt: number | undefined, b
     for (const { barcode, want, row, variantId } of entries) {
       let deducted = row?.deducted ?? 0;
       const reference = `Trendyol ${orderNumber}`;
-      if (!row && preexisting) {
+      // Numara Trendyol'dan bu siparişten sonra aktarıldıysa aktarılan adet siparişi zaten içermiyordu: düşülmüş sayılır
+      const importedAfterOrder =
+        !!variantId && !row?.variantId && orderedAt !== undefined && (await importedAfter(tx, variantId, orderedAt));
+      if ((!row && preexisting) || importedAfterOrder) {
         deducted = want;
       } else if (variantId && want > deducted) {
         // Stok yetmezse kalan adet eksik olarak durur; stok geldiğinde (ör. site siparişi iptal) sonraki çalıştırmada düşülür
@@ -324,6 +340,13 @@ async function applyOrder(orderNumber: string, baselineAt: number | undefined, b
     `);
     return result;
   });
+}
+
+async function importedAfter(tx: Tx, variantId: string, orderedAt: number): Promise<boolean> {
+  const [v] = await tx.select({ at: variants.trendyolImportedAt }).from(variants).where(eq(variants.id, variantId));
+  // Trendyol sipariş tarihi saat dilimi farkıyla (GMT+3) gelebilir: aktarımdan en az bu kadar önceki sipariş
+  // "aktarılan adede dahil" sayılır. Arada kalan nadir siparişte stok iki kez düşebilir (fazla satıştan güvenli).
+  return !!v?.at && v.at.getTime() - FUTURE_MS > orderedAt;
 }
 
 async function matchVariant(tx: Tx, barcode: string): Promise<string | null> {
@@ -476,6 +499,8 @@ async function checkPushResults(deps: SyncDeps, now: Date): Promise<number> {
  * düşüğüdür. Trendyol fiyatı sitedekinden yüksek değilse karşılaştırma kaldırılır (yanıltıcı olmasın) ve
  * panelde uyarı gösterilir; hiçbir barkodu satışta değilse de kaldırılır. Barkodu olmayan üründe elle girilen
  * değer kalır. Hata stok senkronunu durdurmaz.
+ * Trendyol indirimi (%) tanımlı üründe site fiyatı da buradan yeniden hesaplanır: fiyat = Trendyol fiyatı − %indirim
+ * (tam liraya yuvarlanır). Hiçbir barkodu satışta değilse site fiyatı son değerinde kalır.
  */
 async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
   if (state.lastPriceSyncAt && now.getTime() - state.lastPriceSyncAt < PRICE_SYNC_MS) {
@@ -517,18 +542,49 @@ async function syncPricesIfDue(deps: SyncDeps, state: SyncState, now: Date) {
     const changed = await db.transaction(async (tx) => {
       // Okuma ile yazma arasında yönetici fiyatı değiştirmiş olabilir: güncel değerle karar verilir
       const [fresh] = await tx
-        .select({ price: products.price, trendyolPrice: products.trendyolPrice })
+        .select({
+          price: products.price,
+          trendyolPrice: products.trendyolPrice,
+          trendyolSalePrice: products.trendyolSalePrice,
+          trendyolDiscount: products.trendyolDiscount,
+          updatedAt: products.updatedAt,
+        })
         .from(products)
         .where(eq(products.id, productId))
         .for("update");
       if (!fresh) return false;
-      const next = e.min !== null && e.min > fresh.price ? e.min : null;
-      if (e.min !== null && next === null) warnings.push({ productId, name: e.name, price: fresh.price, trendyolPrice: e.min });
-      if (next === fresh.trendyolPrice) return false;
-      await tx.update(products).set({ trendyolPrice: next }).where(eq(products.id, productId));
-      // Karşılaştırmalı fiyatın kaynağı kayıtlı kalsın
+      // İndirim tanımlı üründe site fiyatı Trendyol fiyatını izler; satışta barkod yoksa son fiyat kalır
+      let price = e.min !== null && fresh.trendyolDiscount !== null ? discountedPrice(e.min, fresh.trendyolDiscount) : fresh.price;
+      if (price !== fresh.price && Math.abs(price - fresh.price) > fresh.price * MAX_AUTO_PRICE_CHANGE) {
+        warnings.push({ productId, name: e.name, price: fresh.price, trendyolPrice: e.min!, kind: "jump", proposedPrice: price });
+        price = fresh.price;
+      }
+      const salePrice = e.min ?? fresh.trendyolSalePrice;
+      const next = e.min !== null && e.min > price ? e.min : null;
+      if (e.min !== null && next === null && fresh.trendyolDiscount === null) {
+        warnings.push({ productId, name: e.name, price, trendyolPrice: e.min, kind: "cheaper" });
+      }
+      if (next === fresh.trendyolPrice && price === fresh.price && salePrice === fresh.trendyolSalePrice) return false;
+      // Yalnızca son okunan Trendyol fiyatı değiştiyse sessizce saklanır (güncelleme sayılmaz; updated_at değişmez,
+      // ana sayfadaki öne çıkanların sırası karışmaz)
+      const silent = next === fresh.trendyolPrice && price === fresh.price;
+      await tx
+        .update(products)
+        .set({ trendyolPrice: next, price, trendyolSalePrice: salePrice, ...(silent ? { updatedAt: fresh.updatedAt } : {}) })
+        .where(eq(products.id, productId));
+      if (silent) return false;
+      // Karşılaştırmalı fiyatın ve indirimle değişen site fiyatının kaynağı kayıtlı kalsın
       await audit(
-        { action: "product.trendyol_price", target: productId, data: { from: fresh.trendyolPrice, to: next, trendyolSalePrice: e.min } },
+        {
+          action: "product.trendyol_price",
+          target: productId,
+          data: {
+            from: fresh.trendyolPrice,
+            to: next,
+            trendyolSalePrice: e.min,
+            ...(price !== fresh.price ? { price: { from: fresh.price, to: price }, discount: fresh.trendyolDiscount } : {}),
+          },
+        },
         tx,
       );
       return true;

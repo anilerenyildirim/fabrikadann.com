@@ -31,6 +31,7 @@ export default async function NewProductPage() {
           categoryId: "",
           price: "",
           trendyolPrice: "",
+          trendyolDiscount: "",
           status: "draft",
           featured: false,
           manufacturerId: "",

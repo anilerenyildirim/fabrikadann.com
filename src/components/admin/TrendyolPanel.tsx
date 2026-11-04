@@ -9,6 +9,12 @@ import { formatDateTime, Section } from "./ui";
 // Zamanlanmış görev bu süredir çalışmadıysa uyarı
 const STALE_MS = 15 * 60_000;
 
+// Eski kayıtlarda kind yok: hepsi "Trendyol daha ucuz" uyarısıdır
+function splitWarnings(s: TrendyolStatus) {
+  const all = s.state.priceWarnings ?? [];
+  return { cheaper: all.filter((w) => w.kind !== "jump"), jumps: all.filter((w) => w.kind === "jump") };
+}
+
 /** Senkronun dikkat isteyen durumları (pano ve stok sayfası için). */
 export function trendyolProblems(s: TrendyolStatus, now = Date.now()): string[] {
   const problems: string[] = [];
@@ -27,8 +33,14 @@ export function trendyolProblems(s: TrendyolStatus, now = Date.now()): string[] 
   if (s.state.lastSuccessAt && (!s.state.lastPriceSyncAt || now - s.state.lastPriceSyncAt > 3 * 3600_000)) {
     problems.push("Trendyol fiyatları 3 saattir güncellenemedi; vitrindeki karşılaştırma fiyatları eski olabilir.");
   }
-  if (s.state.priceWarnings?.length) {
-    problems.push(`${s.state.priceWarnings.length} ürün Trendyol'da sitedekinden ucuz ya da aynı fiyatta; vitrinde karşılaştırma gösterilmiyor.`);
+  const { cheaper, jumps } = splitWarnings(s);
+  if (cheaper.length) {
+    problems.push(`${cheaper.length} ürün Trendyol'da sitedekinden ucuz ya da aynı fiyatta; vitrinde karşılaştırma gösterilmiyor.`);
+  }
+  if (jumps.length) {
+    problems.push(
+      `${jumps.length} üründe Trendyol fiyatı çok değişti; site fiyatı kendiliğinden değiştirilmedi. Trendyol fiyatını kontrol edip ürünü kaydedin.`,
+    );
   }
   if (s.shortfalls.length) problems.push(`${s.shortfalls.length} Trendyol siparişi için stok yoktu (aynı çift iki kanalda satılmış olabilir).`);
   if (s.unmatched.length) problems.push(`${s.unmatched.length} Trendyol kalemi hiçbir numarayla eşleşmedi (barkod eksik).`);
@@ -122,9 +134,27 @@ export function TrendyolPanel({ status: s, syncAction }: { status: TrendyolStatu
         </List>
       )}
 
-      {!!s.state.priceWarnings?.length && (
+      {splitWarnings(s).jumps.length > 0 && (
+        <List title="Trendyol fiyatı çok değişti (site fiyatı uygulanmadı)">
+          {splitWarnings(s).jumps.map((w) => (
+            <li key={w.productId} className="py-2.5">
+              <div className="flex flex-wrap items-center gap-x-2">
+                <Link href={`/yonetim/urunler/${w.productId}`} className="inline-flex min-h-11 items-center underline underline-offset-4">
+                  {w.name}
+                </Link>
+                <span className="tabular text-graphite">
+                  site {formatPrice(w.price)} · Trendyol {formatPrice(w.trendyolPrice)}
+                  {w.proposedPrice !== undefined && ` · hesaplanan ${formatPrice(w.proposedPrice)}`}
+                </span>
+              </div>
+            </li>
+          ))}
+        </List>
+      )}
+
+      {splitWarnings(s).cheaper.length > 0 && (
         <List title="Trendyol'da daha ucuz ya da aynı fiyatta">
-          {s.state.priceWarnings.map((w) => (
+          {splitWarnings(s).cheaper.map((w) => (
             <li key={w.productId} className="py-2.5">
               <div className="flex flex-wrap items-center gap-x-2">
                 <Link href={`/yonetim/urunler/${w.productId}`} className="inline-flex min-h-11 items-center underline underline-offset-4">
