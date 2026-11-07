@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CategoryForm } from "@/components/admin/CategoryForms";
 import { ActionButton, MoveButtons } from "@/components/admin/forms";
 import { Empty, PageHeader, Section, qs } from "@/components/admin/ui";
+import { ButtonLink } from "@/components/ui/form";
 import { requireAdmin } from "@/server/auth/current";
 import { listAdminCategories } from "@/server/services/admin/catalog";
 import { createCategoryAction, deleteCategoryAction, moveCategoryAction, updateCategoryAction } from "./actions";
@@ -17,6 +18,11 @@ export default async function CategoriesPage() {
       <PageHeader
         title="Kategoriler"
         description="Vitrindeki menü bu sırayla görünür. Kategori silinince ürünleri silinmez, kategorisiz kalır."
+        actions={
+          <ButtonLink href="/yonetim/kategoriler/n11" variant="secondary">
+            N11 eşleştirme
+          </ButtonLink>
+        }
       />
       <Section title="Kategori ekle">
         <CategoryForm action={createCategoryAction} />

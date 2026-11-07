@@ -70,6 +70,19 @@ const productForm = z.object({
       }
       return k;
     }),
+  n11Price: z
+    .string()
+    .trim()
+    .default("")
+    .transform((s, ctx) => {
+      if (!s) return null;
+      const k = parsePriceToKurus(s);
+      if (Number.isNaN(k)) {
+        ctx.addIssue({ code: "custom", message: "N11 fiyatını 1.699,90 biçiminde yazın ya da boş bırakın." });
+        return z.NEVER;
+      }
+      return k;
+    }),
   trendyolDiscount: z
     .string()
     .trim()

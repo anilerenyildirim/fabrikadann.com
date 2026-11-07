@@ -158,6 +158,7 @@ export default async function EditProductPage({ params, searchParams }: Props) {
               product.trendyolDiscount !== null ? (product.trendyolSalePrice ?? product.trendyolPrice) : product.trendyolPrice,
             ),
             trendyolDiscount: product.trendyolDiscount === null ? "" : String(product.trendyolDiscount),
+            n11Price: priceInput(product.n11Price),
             status: product.status,
             featured: product.featured,
             manufacturerId: product.manufacturerId ?? "",

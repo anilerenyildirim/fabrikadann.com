@@ -17,6 +17,7 @@ export type ProductInfoValues = {
   price: string;
   trendyolPrice: string;
   trendyolDiscount: string;
+  n11Price: string;
   status: "draft" | "active" | "archived";
   featured: boolean;
   manufacturerId: string;
@@ -32,6 +33,7 @@ const FIELDS = [
   "price",
   "trendyolPrice",
   "trendyolDiscount",
+  "n11Price",
   "status",
   "featured",
   "manufacturerId",
@@ -129,6 +131,16 @@ export function ProductInfoForm({
           defaultValue={v("trendyolDiscount")}
           error={e.trendyolDiscount}
           hint="Girilirse fiyat alanı kullanılmaz: site fiyatı = Trendyol fiyatı − bu oran (tam liraya yuvarlanır). Trendyol fiyatı saatlik senkronda değişince site fiyatı da yeniden hesaplanır. Boş bırakırsanız fiyatı elle girersiniz."
+          className="[&_input]:[font-variant-numeric:tabular-nums]"
+        />
+        <TextField
+          label="N11 fiyatı (isteğe bağlı)"
+          name="n11Price"
+          inputMode="decimal"
+          placeholder="1.699,90"
+          defaultValue={v("n11Price")}
+          error={e.n11Price}
+          hint="Boş bırakırsanız N11 fiyatı Ayarlar > N11'deki oranla site fiyatından hesaplanır. Değişiklik N11'e birkaç dakika içinde gider."
           className="[&_input]:[font-variant-numeric:tabular-nums]"
         />
       </div>

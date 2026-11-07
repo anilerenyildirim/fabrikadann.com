@@ -52,6 +52,9 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
             <ButtonLink href="/yonetim/urunler/trendyol-aktar" variant="secondary">
               Trendyol'dan aktar
             </ButtonLink>
+            <ButtonLink href="/yonetim/urunler/n11" variant="secondary">
+              N11'e gönder
+            </ButtonLink>
             <ButtonLink href="/yonetim/urunler/yeni">Yeni ürün</ButtonLink>
           </>
         }

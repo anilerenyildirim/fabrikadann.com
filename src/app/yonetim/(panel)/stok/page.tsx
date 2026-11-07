@@ -22,6 +22,8 @@ import {
 import { requireAdmin } from "@/server/auth/current";
 import { listStockMovements, listStockRows, STOCK_REASON_LABELS, type StockFilter } from "@/server/services/admin/stock";
 import { getTrendyolStatus } from "@/server/services/trendyol";
+import { getN11Status } from "@/server/services/marketplace-sync";
+import { N11Panel } from "@/components/admin/N11Panel";
 import { adjustStockAction, bulkStockAction, trendyolSyncNowAction } from "./actions";
 
 export const metadata: Metadata = { title: "Stok" };
@@ -40,7 +42,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
   const q = param(sp.q);
   const f = param(sp.filtre);
   const filter: StockFilter = f === "low" || f === "out" ? f : "all";
-  const [all, movements, trendyol] = await Promise.all([listStockRows({ filter, q }), listStockMovements(50), getTrendyolStatus()]);
+  const [all, movements, trendyol, n11] = await Promise.all([listStockRows({ filter, q }), listStockMovements(50), getTrendyolStatus(), getN11Status()]);
   // Her satırda bir form var; sayfa telefonda hafif kalsın diye 50'şer satır
   const pageCount = Math.max(1, Math.ceil(all.length / STOCK_PAGE_SIZE));
   const page = Math.min(pageParam(sp.sayfa), pageCount);
@@ -135,6 +137,7 @@ export default async function StockPage({ searchParams }: { searchParams: Promis
           </details>
         </Section>
         <TrendyolPanel status={trendyol} syncAction={trendyolSyncNowAction} />
+        <N11Panel status={n11} />
       </div>
 
       <div>

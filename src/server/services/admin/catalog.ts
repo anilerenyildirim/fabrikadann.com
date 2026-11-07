@@ -53,6 +53,8 @@ export const productInputSchema = z.object({
     .max(MAX_TRENDYOL_DISCOUNT, "İndirim en fazla %90 olabilir.")
     .nullable()
     .default(null),
+  /** N11 satış fiyatı; boşsa Ayarlar'daki oranla site fiyatından hesaplanır */
+  n11Price: priceSchema.nullable().default(null),
   status: z.enum(["draft", "active", "archived"], { error: "Durum seçin." }).default("draft"),
   featured: z.boolean().default(false),
   // Yalnızca yönetim: product_supply tablosuna yazılır
@@ -354,6 +356,7 @@ export async function createProduct(raw: ProductInput, ctx: AdminContext): Promi
             trendyolPrice: input.trendyolPrice,
             trendyolSalePrice,
             trendyolDiscount: input.trendyolDiscount,
+            n11Price: input.n11Price,
             status: input.status,
             featured: input.featured,
           })
@@ -469,6 +472,7 @@ export async function updateProduct(
           trendyolPrice: input.trendyolPrice,
           trendyolSalePrice,
           trendyolDiscount: input.trendyolDiscount,
+          n11Price: input.n11Price,
           status: input.status,
           featured: input.featured,
         })

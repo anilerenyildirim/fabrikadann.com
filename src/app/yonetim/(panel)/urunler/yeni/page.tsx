@@ -32,6 +32,7 @@ export default async function NewProductPage() {
           price: "",
           trendyolPrice: "",
           trendyolDiscount: "",
+          n11Price: "",
           status: "draft",
           featured: false,
           manufacturerId: "",
