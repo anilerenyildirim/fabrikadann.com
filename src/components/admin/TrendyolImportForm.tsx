@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { Button, Checkbox, FormNotice } from "@/components/ui/form";
 import { formatPrice } from "@/lib/money";
-import type { FormState } from "@/lib/form";
 
 const MAX_SELECTED = 8;
 
@@ -17,6 +17,7 @@ export type ImportCandidateView = {
   newItems: number;
   newStock: number;
   existingItems: number;
+  misplacedItems: number;
   problems: { barcode: string; reason: string }[];
   trendyolPrice: number | null;
   sitePrice: number | null;
@@ -29,35 +30,40 @@ type ResultView = {
   status: "created" | "updated" | "skipped" | "failed";
   productId?: string;
   added: string[];
+  moved: string[];
   problems: { barcode: string; reason: string }[];
   imageErrors: number;
   message?: string;
 };
 
-type State = FormState & { results?: ResultView[] };
+type Action = (mainId: string) => Promise<{ result?: ResultView; error?: string }>;
+
+type Progress = { done: number; total: number; current: string; startedAt: number };
 
 const STATUS_LABEL: Record<ResultView["status"], string> = {
   created: "Taslak oluşturuldu",
-  updated: "Mevcut ürüne eklendi",
+  updated: "Mevcut ürün güncellendi",
   skipped: "Atlandı",
   failed: "Aktarılamadı",
 };
 
-export function TrendyolImportForm({
-  action,
-  candidates,
-}: {
-  action: (prev: State, form: FormData) => Promise<State>;
-  candidates: ImportCandidateView[];
-}) {
-  const [state, formAction, pending] = useActionState<State, FormData>(action, {});
+export function TrendyolImportForm({ action, candidates }: { action: Action; candidates: ImportCandidateView[] }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // Aktarım bitince seçim temizlenir (aktarılanlar listede "Tümü sitede" olur)
-  const [seen, setSeen] = useState(state);
-  if (seen !== state) {
-    setSeen(state);
-    if (state.ok) setSelected(new Set());
-  }
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [results, setResults] = useState<ResultView[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  const running = progress !== null;
+
+  // Aktarım sürerken sayfadan çıkılırsa yarıda kalır; tarayıcı uyarsın
+  useEffect(() => {
+    if (!running) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [running]);
+
   const toggle = (id: string, on: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -67,15 +73,56 @@ export function TrendyolImportForm({
     });
   const tooMany = selected.size > MAX_SELECTED;
 
+  async function run() {
+    const queue = candidates.filter((c) => selected.has(c.productMainId));
+    if (queue.length === 0 || queue.length > MAX_SELECTED) return;
+    setError(null);
+    setResults([]);
+    const collected: ResultView[] = [];
+    for (const [i, c] of queue.entries()) {
+      setProgress({ done: i, total: queue.length, current: c.name, startedAt: Date.now() });
+      let res: Awaited<ReturnType<Action>>;
+      try {
+        res = await action(c.productMainId);
+      } catch {
+        res = { error: "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip kalan ürünleri yeniden seçin." };
+      }
+      if (res.result) collected.push(res.result);
+      else collected.push({ productMainId: c.productMainId, name: c.name, status: "failed", added: [], moved: [], problems: [], imageErrors: 0, message: res.error });
+      setResults([...collected]);
+      // Bağlantı ya da sınır hatasında kalanlar denenmez
+      if (!res.result && res.error && /ulaşılamadı|Çok sık/.test(res.error)) {
+        setError(res.error);
+        break;
+      }
+    }
+    setProgress(null);
+    setSelected(new Set());
+    startTransition(() => router.refresh());
+  }
+
+  const done = results.filter((r) => r.status === "created" || r.status === "updated").length;
+
   return (
-    <form action={formAction} className="flex flex-col gap-6">
-      {state.error && <FormNotice>{state.error}</FormNotice>}
-      {state.ok && state.message && <FormNotice tone="info">{state.message}</FormNotice>}
-      {state.results && state.results.length > 0 && <Results results={state.results} />}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!running) void run();
+      }}
+      className="flex flex-col gap-6"
+    >
+      {error && <FormNotice>{error}</FormNotice>}
+      {!running && results.length > 0 && (
+        <FormNotice tone={done > 0 ? "info" : "error"}>
+          {done > 0 ? `${done} ürün aktarıldı. Taslakları kontrol edip yayına alın.` : "Hiçbir ürün aktarılmadı; ayrıntılar aşağıda."}
+        </FormNotice>
+      )}
+      {progress && <ImportProgress progress={progress} />}
+      {results.length > 0 && <Results results={results} />}
 
       <ul className="border-t border-ink">
         {candidates.map((c) => {
-          const importable = c.newItems > 0;
+          const importable = c.newItems > 0 || c.misplacedItems > 0;
           return (
             <li key={c.productMainId} className="border-b border-rule py-3">
               <div className="flex items-start gap-3">
@@ -83,7 +130,7 @@ export function TrendyolImportForm({
                   id={`aktar-${c.productMainId}`}
                   name="mainId"
                   value={c.productMainId}
-                  disabled={!importable || pending}
+                  disabled={!importable || running}
                   checked={selected.has(c.productMainId)}
                   onChange={(e) => toggle(c.productMainId, e.currentTarget.checked)}
                   label={<span className="sr-only">{c.name}</span>}
@@ -92,7 +139,7 @@ export function TrendyolImportForm({
                 <div className="min-w-0 flex-1 py-2 text-[0.8125rem]">
                   <p className="font-medium [overflow-wrap:anywhere]">{c.name}</p>
                   <p className="mt-1 text-graphite [overflow-wrap:anywhere]">
-                    {c.categoryName ?? "Kategorisiz"} · {c.colorNames.join(", ") || "renk yok"} · {c.sizes.length} numara
+                    {c.categoryName ?? "Kategorisiz"} · {c.colorNames.length} renk: {c.colorNames.join(", ") || "renk yok"} · {c.sizes.length} numara
                     {" · "}Model kodu {c.productMainId}
                   </p>
                   <p className="tabular mt-1">
@@ -106,14 +153,13 @@ export function TrendyolImportForm({
                     )}
                   </p>
                   <p className="mt-1 text-graphite">
-                    {importable ? (
+                    {c.newItems > 0 && (
                       <>
                         {c.newItems} yeni numara, toplam <span className="tabular">{c.newStock}</span> adet stok
                         {c.existingItems > 0 && <> · {c.existingItems} numara zaten sitede</>}
                       </>
-                    ) : (
-                      <span className="label">Tümü sitede</span>
                     )}
+                    {!importable && <span className="label">Tümü sitede</span>}
                     {c.siteProduct && (
                       <>
                         {" · "}
@@ -123,6 +169,11 @@ export function TrendyolImportForm({
                       </>
                     )}
                   </p>
+                  {c.misplacedItems > 0 && (
+                    <p className="mt-1 font-medium">
+                      Sitede {c.misplacedItems} numara Trendyol'dakinden farklı renkte. Aktarınca Trendyol'daki renklere ayrılır.
+                    </p>
+                  )}
                   {c.problems.length > 0 && (
                     <ul className="mt-1 text-graphite">
                       {c.problems.map((p) => (
@@ -139,13 +190,59 @@ export function TrendyolImportForm({
         })}
       </ul>
 
-      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-ink bg-paper py-3">
-        <Button type="submit" disabled={pending || selected.size === 0 || tooMany} className="w-full sm:w-auto">
-          {pending ? "Aktarılıyor… (görseller indiriliyor)" : `Seçilenleri taslak olarak aktar (${selected.size})`}
-        </Button>
-        {tooMany && <p className="text-[0.8125rem]">Tek seferde en fazla {MAX_SELECTED} ürün aktarılabilir.</p>}
+      <div className="sticky bottom-0 flex flex-col gap-3 border-t border-ink bg-paper py-3">
+        {progress && <ImportProgress progress={progress} compact />}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={running || selected.size === 0 || tooMany} className="w-full sm:w-auto">
+            {progress ? `Aktarılıyor… ${progress.done + 1} / ${progress.total}` : `Seçilenleri taslak olarak aktar (${selected.size})`}
+          </Button>
+          {tooMany && <p className="text-[0.8125rem]">Tek seferde en fazla {MAX_SELECTED} ürün aktarılabilir.</p>}
+        </div>
       </div>
     </form>
+  );
+}
+
+/** Ürün ürün ilerleme: biten ürünler dolu, sıradaki ürünün payı hareketli çizgiyle; geçen süre saniye saniye. */
+function ImportProgress({ progress, compact = false }: { progress: Progress; compact?: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - progress.startedAt) / 1000));
+  const share = 100 / progress.total;
+  return (
+    <div className={compact ? "" : "border border-ink p-4"} aria-live="polite">
+      {!compact && (
+        <p className="mb-3 text-[0.8125rem] [overflow-wrap:anywhere]">
+          <span className="label mr-2">
+            Ürün {progress.done + 1} / {progress.total}
+          </span>
+          {progress.current} — Trendyol'dan okunuyor, görseller indirilip işleniyor
+          <span className="tabular text-graphite"> ({seconds} sn)</span>
+        </p>
+      )}
+      <div
+        role="progressbar"
+        aria-label="Aktarım ilerlemesi"
+        aria-valuemin={0}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.done}
+        aria-valuetext={`${progress.done} / ${progress.total} ürün aktarıldı`}
+        className="relative h-2 w-full overflow-hidden bg-fog"
+      >
+        <div className="absolute inset-y-0 left-0 bg-ink transition-[width] duration-300" style={{ width: `${progress.done * share}%` }} />
+        <div className="absolute inset-y-0 overflow-hidden" style={{ left: `${progress.done * share}%`, width: `${share}%` }}>
+          <div className="ilerleme-akis absolute inset-y-0 w-1/3 bg-graphite" />
+        </div>
+      </div>
+      {!compact && (
+        <p className="mt-2 text-[0.8125rem] text-graphite">
+          Görseli çok olan ürün bir dakikaya kadar sürebilir. Bu sayfadan çıkmayın; biten ürünler aşağıda listelenir.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -167,6 +264,7 @@ function Results({ results }: { results: ResultView[] }) {
               )}
             </p>
             {r.added.length > 0 && <p className="text-graphite">Eklenen numaralar: {r.added.join(", ")}</p>}
+            {r.moved.length > 0 && <p className="text-graphite">Doğru renge taşınan numaralar: {r.moved.join(", ")}</p>}
             {r.message && <p className="text-graphite">{r.message}</p>}
             {r.imageErrors > 0 && <p className="text-graphite">{r.imageErrors} görsel indirilemedi; ürün sayfasından elle yükleyin.</p>}
             {r.problems.length > 0 && (

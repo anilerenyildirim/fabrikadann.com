@@ -183,8 +183,13 @@ export const productColors = pgTable(
       .references(() => products.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     position: integer("position").notNull().default(0),
+    // Trendyol'dan aktarılan rengin kaynağı (içerik kimliği; içerikte birden çok renk varsa "içerik|renk")
+    trendyolKey: text("trendyol_key"),
   },
-  (t) => [index("product_colors_product_idx").on(t.productId)],
+  (t) => [
+    index("product_colors_product_idx").on(t.productId),
+    uniqueIndex("product_colors_trendyol_key_idx").on(t.productId, t.trendyolKey).where(sql`${t.trendyolKey} is not null`),
+  ],
 );
 
 export const productImages = pgTable(

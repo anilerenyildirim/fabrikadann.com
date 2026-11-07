@@ -38,7 +38,7 @@ type RawContent = {
   category?: { id: number; name: string };
   brand?: { id: number; name: string };
   images?: { url: string }[];
-  attributes?: { attributeName: string; attributeValue: string }[];
+  attributes?: { attributeName: string; attributeValue?: string; attributeValues?: { attributeValue: string }[] }[];
   variants: RawVariant[];
 };
 
@@ -199,7 +199,7 @@ describe("yardımcılar", () => {
       categoryName: c.category?.name ?? null,
       brandName: null,
       images: (c.images ?? []).map((i) => i.url),
-      attributes: c.attributes ?? [],
+      attributes: (c.attributes ?? []).map((a) => ({ attributeName: a.attributeName, attributeValue: a.attributeValue ?? null })),
       variants: c.variants.map((v) => ({
         barcode: v.barcode,
         attributes: v.attributes ?? [],
@@ -586,5 +586,195 @@ describe("inceleme düzeltmeleri", () => {
     expect((await db.query.variants.findFirst({ where: eq(schema.variants.id, v.id) }))!.trendyolImportedAt).not.toBeNull();
     await updateVariant(v.id, { sku: v.sku, barcode: "YENI-38" }, ctx);
     expect((await db.query.variants.findFirst({ where: eq(schema.variants.id, v.id) }))!.trendyolImportedAt).toBeNull();
+  });
+});
+
+// ---------- Renk kartları (2026-11-06: 4 renkli ürün sitede 2 renk görünüyordu) ----------
+
+/** Trendyol'daki gibi: 4 renk kartı (4 içerik), ikişer kartın "Renk"i aynı, Web Color'ları farklı. */
+function fourColorBoot(mainId = "BOT-4"): RawContent[] {
+  const card = (contentId: number, renk: string, web: string, prefix: string, form: "tekil" | "dizi" = "tekil"): RawContent => ({
+    contentId,
+    productMainId: mainId,
+    title: "Kadın Bot",
+    category: { id: 1, name: "Bot" },
+    images: [{ url: `https://cdn.dsmcdn.com/ty1/${prefix}-1.jpg` }, { url: `https://cdn.dsmcdn.com/ty1/${prefix}-2.jpg` }],
+    attributes:
+      form === "dizi"
+        ? [
+            { attributeName: "Renk", attributeValues: [{ attributeValue: renk }] },
+            { attributeName: "Web Color", attributeValues: [{ attributeValue: web }] },
+          ]
+        : [
+            { attributeName: "Renk", attributeValue: renk },
+            { attributeName: "Web Color", attributeValue: web },
+          ],
+    variants: ["37", "38"].map((size) => ({
+      barcode: `${prefix}-${size}`,
+      attributes: beden(size),
+      onSale: true,
+      stock: { quantity: 2 },
+      price: { salePrice: 1999.99 },
+    })),
+  });
+  return [
+    card(104, "Siyah", "Kahverengi", "SK", "dizi"),
+    card(101, "Siyah", "Siyah", "SS"),
+    card(102, "Kahve", "Kahverengi", "KK", "dizi"),
+    card(103, "Kahve", "Kahve", "KK2"),
+  ];
+}
+
+describe("renk kartları", () => {
+  test("her Trendyol renk kartı ayrı renk olur; aynı adlılar ayırt edilir", async () => {
+    fake.contents = fourColorBoot();
+    const { candidates } = await listTrendyolImportCandidates(ctx, deps());
+    // Sıra içerik kimliğine göre sabit: 101 ve 102 adını korur, 104 Web Color'la ayrılır, 103'ün Web Color'ı aynı: numara alır
+    expect(candidates[0]!.colorNames).toEqual(["Siyah", "Kahve", "Kahve 2", "Siyah (Kahverengi)"]);
+
+    const [result] = await importTrendyolProducts(["BOT-4"], ctx, deps());
+    expect(result).toMatchObject({ status: "created" });
+    const p = (await productByMainId("BOT-4"))!;
+    expect(p.colors).toHaveLength(4);
+    const byName = new Map(p.colors.map((c) => [c.name, c]));
+    expect(byName.get("Siyah")!.variants.map((v) => v.barcode).sort()).toEqual(["SS-37", "SS-38"]);
+    expect(byName.get("Siyah (Kahverengi)")!.variants.map((v) => v.barcode).sort()).toEqual(["SK-37", "SK-38"]);
+    expect(byName.get("Kahve 2")!.variants.map((v) => v.barcode).sort()).toEqual(["KK2-37", "KK2-38"]);
+    for (const c of p.colors) {
+      expect(c.images).toHaveLength(2);
+      expect(c.trendyolKey).not.toBeNull();
+    }
+    expect(p.colors.map((c) => c.position).sort()).toEqual([0, 1, 2, 3]);
+  });
+
+  test("içerik düzeyindeki attributeValues dizisinden renk okunur; bozuk tek özellik diğerlerini düşürmez", async () => {
+    fake.contents = [
+      {
+        ...fourColorBoot()[0]!,
+        attributes: [
+          { attributeName: "Materyal", attributeValue: { bozuk: true } as unknown as string },
+          { attributeName: "Renk", attributeValues: [{ attributeValue: "Vizon" }] },
+        ],
+      },
+    ];
+    const { candidates } = await listTrendyolImportCandidates(ctx, deps());
+    expect(candidates[0]!.colorNames).toEqual(["Vizon"]);
+  });
+
+  test("site rengi yeniden adlandırılsa da sonradan eklenen numara aynı renge gider", async () => {
+    fake.contents = fourColorBoot();
+    await importTrendyolProducts(["BOT-4"], ctx, deps());
+    const p = (await productByMainId("BOT-4"))!;
+    const siyah = p.colors.find((c) => c.name === "Siyah")!;
+    await db.update(schema.productColors).set({ name: "Gece siyahı" }).where(eq(schema.productColors.id, siyah.id));
+
+    fake.contents.find((c) => c.contentId === 101)!.variants.push({
+      barcode: "SS-39",
+      attributes: beden("39"),
+      onSale: true,
+      stock: { quantity: 1 },
+      price: { salePrice: 1999.99 },
+    });
+    const [result] = await importTrendyolProducts(["BOT-4"], ctx, deps());
+    expect(result).toMatchObject({ status: "updated", added: ["Gece siyahı 39"], moved: [] });
+    expect((await variantByBarcode("SS-39")).colorId).toBe(siyah.id);
+    expect((await productByMainId("BOT-4"))!.colors).toHaveLength(4);
+  });
+
+  test("eski aktarımın birleştirdiği ürün yeniden aktarınca düzelir: eksik kartlar gelir, karışık görseller yenilenir", async () => {
+    // Eski hatalı aktarımın bıraktığı durum: aynı adlı ikinci kartların numaraları "iki kez var" diye atlanmış,
+    // görselleri ilk kartın rengine karışmış, renklerde Trendyol anahtarı yok
+    const all = fourColorBoot();
+    fake.contents = all.filter((c) => c.contentId === 101 || c.contentId === 102);
+    await importTrendyolProducts(["BOT-4"], ctx, deps());
+    const before = (await productByMainId("BOT-4"))!;
+    expect(before.colors).toHaveLength(2);
+    await db.update(schema.productColors).set({ trendyolKey: null });
+    for (const c of before.colors) {
+      await db.insert(schema.productImages).values({ colorId: c.id, storageKey: `p/${crypto.randomUUID()}`, width: 400, height: 400, alt: "karışık", position: 9 });
+    }
+    const stockBefore = (await variantByBarcode("SS-37")).stock;
+
+    fake.contents = all;
+    const { candidates } = await listTrendyolImportCandidates(ctx, deps());
+    expect(candidates[0]).toMatchObject({ newItems: 4, existingItems: 4, misplacedItems: 0 });
+
+    imageRequests = [];
+    const [result] = await importTrendyolProducts(["BOT-4"], ctx, deps());
+    expect(result!.status).toBe("updated");
+    expect(result!.added.sort()).toEqual(["Kahve 2 37", "Kahve 2 38", "Siyah (Kahverengi) 37", "Siyah (Kahverengi) 38"]);
+
+    const after = (await productByMainId("BOT-4"))!;
+    expect(after.colors.map((c) => c.name).sort()).toEqual(["Kahve", "Kahve 2", "Siyah", "Siyah (Kahverengi)"]);
+    for (const c of after.colors) {
+      expect(c.variants).toHaveLength(2);
+      expect(c.images).toHaveLength(2);
+      expect(c.images.some((i) => i.alt === "karışık")).toBe(false);
+      expect(c.trendyolKey).not.toBeNull();
+    }
+    expect((await variantByBarcode("SS-37")).stock).toBe(stockBefore);
+    expect(imageRequests).toHaveLength(8);
+
+    const { candidates: again } = await listTrendyolImportCandidates(ctx, deps());
+    expect(again[0]).toMatchObject({ newItems: 0, misplacedItems: 0 });
+  });
+
+  test("yanlış renkte duran numara doğru renge taşınır; boş kalan renk silinir", async () => {
+    const all = fourColorBoot();
+    fake.contents = all;
+    await importTrendyolProducts(["BOT-4"], ctx, deps());
+    const p = (await productByMainId("BOT-4"))!;
+    const siyah = p.colors.find((c) => c.name === "Siyah")!;
+    const ikinci = p.colors.find((c) => c.name === "Siyah (Kahverengi)")!;
+    // İkinci kartın numaraları farklı olsaydı eski aktarım onları ilk karta koyardı
+    for (const [barcode, size] of [["SK-37", "39"], ["SK-38", "40"]] as const) {
+      await db.update(schema.variants).set({ colorId: siyah.id, size }).where(eq(schema.variants.barcode, barcode));
+    }
+    await db.delete(schema.productColors).where(eq(schema.productColors.id, ikinci.id));
+    // Adı Trendyol'daki hiçbir karta uymayan eski renk: numaraları yeni renge geçer, kendisi boş kalıp silinir
+    const eski = p.colors.find((c) => c.name === "Kahve 2")!;
+    await db.update(schema.productColors).set({ name: "Eski ad" }).where(eq(schema.productColors.id, eski.id));
+    await db.update(schema.productColors).set({ trendyolKey: null });
+    all.find((c) => c.contentId === 104)!.variants.forEach((v, i) => (v.attributes = beden(["39", "40"][i]!)));
+
+    const { candidates } = await listTrendyolImportCandidates(ctx, deps());
+    expect(candidates[0]).toMatchObject({ newItems: 0, misplacedItems: 4 });
+    const [result] = await importTrendyolProducts(["BOT-4"], ctx, deps());
+    expect(result!.moved.sort()).toEqual(["Kahve 2 37", "Kahve 2 38", "Siyah (Kahverengi) 39", "Siyah (Kahverengi) 40"]);
+    const after = (await productByMainId("BOT-4"))!;
+    expect(after.colors.map((c) => c.name).sort()).toEqual(["Kahve", "Kahve 2", "Siyah", "Siyah (Kahverengi)"]);
+    expect(await db.select().from(schema.productColors).where(eq(schema.productColors.id, eski.id))).toHaveLength(0);
+    expect(after.colors.find((c) => c.name === "Siyah")!.variants.map((v) => v.barcode).sort()).toEqual(["SS-37", "SS-38"]);
+    expect(after.colors.map((c) => c.position).sort()).toEqual([0, 1, 2, 3]);
+  });
+
+  test("elle kurulmuş ürünün renklerine ve görsellerine dokunulmaz", async () => {
+    fake.contents = fourColorBoot();
+    const { product, variants: vs } = await makeProduct({ colors: [{ name: "Gece", sizes: [{ size: "37", stock: 3 }] }] });
+    await db.update(schema.variants).set({ barcode: "SS-37" }).where(eq(schema.variants.id, vs[0]!.id));
+    const { candidates } = await listTrendyolImportCandidates(ctx, deps());
+    expect(candidates[0]).toMatchObject({ misplacedItems: 0, existingItems: 1 });
+    const [result] = await importTrendyolProducts(["BOT-4"], ctx, deps());
+    expect(result!.moved).toEqual([]);
+    expect((await variantByBarcode("SS-37")).colorId).toBe(vs[0]!.colorId);
+    const after = await db.select().from(schema.productColors).where(eq(schema.productColors.id, vs[0]!.colorId));
+    expect(after).toHaveLength(1);
+    expect(product.id).toBe(result!.productId);
+  });
+
+  test("tek içerikte numaralar farklı renkteyse renkler ayrılır", async () => {
+    const [first] = fourColorBoot();
+    fake.contents = [
+      {
+        ...first!,
+        attributes: [],
+        variants: [
+          { barcode: "MIX-37", attributes: [...beden("37"), ...renk("Bej")], onSale: true, stock: { quantity: 1 }, price: { salePrice: 999 } },
+          { barcode: "MIX-38", attributes: [...beden("38"), ...renk("Lacivert")], onSale: true, stock: { quantity: 1 }, price: { salePrice: 999 } },
+        ],
+      },
+    ];
+    const { candidates } = await listTrendyolImportCandidates(ctx, deps());
+    expect(candidates[0]!.colorNames).toEqual(["Bej", "Lacivert"]);
   });
 });

@@ -2,27 +2,27 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import type { FormState } from "@/lib/form";
 import { rateLimit } from "@/server/auth/rate-limit";
 import { audit } from "@/server/services/audit";
 import { importTrendyolProducts, type ImportResult } from "@/server/services/admin/trendyol-import";
 import { TrendyolClient, TrendyolError, trendyolConfig } from "@/server/trendyol/client";
 import { adminContext, errorState } from "../../../_lib/action";
 
-export type ImportState = FormState & { results?: ImportResult[] };
+export type ImportOneState = { result?: ImportResult; error?: string };
 
-const mainIds = z
-  .array(z.string().trim().min(1).max(200))
-  .min(1, "Aktarılacak ürünleri seçin.")
-  .max(8, "Tek seferde en fazla 8 ürün aktarılabilir. Seçimi azaltın.");
+const mainIdSchema = z.string().trim().min(1, "Aktarılacak ürünü seçin.").max(200);
 
-/** Seçilen Trendyol ürünlerini taslak olarak aktarır. Ürün bilgisi istemciden değil Trendyol'dan yeniden okunur. */
-export async function importTrendyolAction(_prev: ImportState, form: FormData): Promise<ImportState> {
+/**
+ * Tek bir Trendyol ürününü (model kodu) taslak olarak aktarır. Sayfa seçilenleri sırayla tek tek gönderir:
+ * böylece ilerleme gösterilebilir ve hiçbir istek vekil zaman aşımına (Cloudflare 100 sn) takılmaz.
+ * Ürün bilgisi istemciden değil Trendyol'dan yeniden okunur.
+ */
+export async function importTrendyolProductAction(rawMainId: unknown): Promise<ImportOneState> {
   const ctx = await adminContext();
-  const parsed = mainIds.safeParse(form.getAll("mainId").filter((v): v is string => typeof v === "string"));
+  const parsed = mainIdSchema.safeParse(rawMainId);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Geçersiz seçim." };
-  // Görsel indirme ve işleme pahalı: hesap başına saatte 30 aktarım
-  const limited = await rateLimit(`trendyol-aktar:${ctx.actorId}`, 30, 3600);
+  // Görsel indirme ve işleme pahalı: hesap başına saatte 120 ürün
+  const limited = await rateLimit(`trendyol-aktar:${ctx.actorId}`, 120, 3600);
   if (!limited.ok) return { error: `Çok sık aktarım yapıldı. ${limited.retryAfter} saniye sonra yeniden deneyin.` };
   let cfg;
   try {
@@ -31,20 +31,13 @@ export async function importTrendyolAction(_prev: ImportState, form: FormData): 
     return { error: e instanceof Error ? e.message : "Trendyol ayarları hatalı." };
   }
   if (!cfg) return { error: "Trendyol bağlantısı tanımlı değil. Sunucuda TRENDYOL_SELLER_ID, TRENDYOL_API_KEY ve TRENDYOL_API_SECRET tanımlayın." };
-  await audit({ action: "trendyol.import_start", actorId: ctx.actorId, ip: ctx.ip, data: { productMainIds: parsed.data } });
-  let results: ImportResult[];
+  await audit({ action: "trendyol.import_start", actorId: ctx.actorId, ip: ctx.ip, data: { productMainIds: [parsed.data] } });
   try {
-    results = await importTrendyolProducts(parsed.data, ctx, { client: new TrendyolClient(cfg) });
+    const [result] = await importTrendyolProducts([parsed.data], ctx, { client: new TrendyolClient(cfg) });
+    revalidatePath("/yonetim", "layout");
+    return { result };
   } catch (e) {
     if (e instanceof TrendyolError) return { error: `Trendyol'dan okunamadı: ${e.message}` };
-    return errorState(e, undefined, "trendyol-aktar");
+    return { error: errorState(e, undefined, "trendyol-aktar").error ?? "Ürün aktarılamadı." };
   }
-  revalidatePath("/yonetim", "layout");
-  const done = results.filter((r) => r.status === "created" || r.status === "updated").length;
-  return {
-    ok: done > 0,
-    message: done > 0 ? `${done} ürün aktarıldı. Taslakları kontrol edip yayına alın.` : undefined,
-    error: done === 0 ? "Hiçbir ürün aktarılmadı; ayrıntılar aşağıda." : undefined,
-    results,
-  };
 }

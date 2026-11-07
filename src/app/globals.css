@@ -220,3 +220,16 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Aktarım ilerlemesi: sıradaki ürünün payında soldan sağa akan çizgi (bekleme sürerken donmuş görünmesin) */
+@keyframes ilerleme-akis {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+.ilerleme-akis {
+  animation: ilerleme-akis 1.2s ease-in-out infinite;
+}

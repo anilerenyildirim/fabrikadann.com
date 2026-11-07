@@ -124,15 +124,34 @@ const pricesSchema = z.object({
 
 // Onaylı ürünler (Product V2: GET /integration/product/sellers/{sellerId}/products/approved).
 // Her içerik (contentId) bir renk; aynı productMainId'li içerikler aynı ürünün renkleri. Numara ve renk attributes'ta.
-const attributeSchema = z.object({
-  attributeName: z.string().nullish(),
-  attributeValue: z.union([z.string(), z.number()]).nullish().transform((v) => (v == null ? null : String(v))),
-});
+// Trendyol özelliği iki biçimde gönderebiliyor: tekil "attributeValue" ya da (içerik düzeyinde) "attributeValues" dizisi.
+const valueSchema = z.union([z.string(), z.number()]).nullish().catch(null).transform((v) => (v == null ? null : String(v).trim() || null));
+const attributeSchema = z
+  .object({
+    attributeName: z.string().nullish().catch(null),
+    attributeValue: valueSchema,
+    attributeValues: z
+      .array(z.object({ attributeValue: valueSchema }).catch({ attributeValue: null }))
+      .nullish()
+      .catch(null),
+  })
+  .transform((a) => ({
+    attributeName: a.attributeName ?? null,
+    attributeValue:
+      a.attributeValue ??
+      ((a.attributeValues ?? []).map((v) => v.attributeValue).filter((v): v is string => !!v).join(", ") || null),
+  }));
+// Biçimi bozuk tek özellik atlanır; dizinin geri kalanı (renk, numara) kaybolmaz
 const attributesSchema = z
-  .array(attributeSchema)
+  .array(z.unknown())
   .nullish()
   .catch(null)
-  .transform((a) => a ?? []);
+  .transform((list) =>
+    (list ?? []).flatMap((raw) => {
+      const a = attributeSchema.safeParse(raw);
+      return a.success ? [a.data] : [];
+    }),
+  );
 
 const approvedVariantSchema = z.object({
   barcode: z.string().trim().min(1).max(64),

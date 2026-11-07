@@ -6,7 +6,7 @@ import { requireAdmin } from "@/server/auth/current";
 import { logError } from "@/server/log";
 import { listTrendyolImportCandidates, type ImportCandidate } from "@/server/services/admin/trendyol-import";
 import { TrendyolClient, TrendyolError, trendyolConfig } from "@/server/trendyol/client";
-import { importTrendyolAction } from "./actions";
+import { importTrendyolProductAction } from "./actions";
 
 export const metadata: Metadata = { title: "Trendyol'dan ürün aktar" };
 
@@ -51,7 +51,7 @@ export default async function TrendyolImportPage() {
           {data.candidates.length === 0 ? (
             <Empty>Trendyol'da onaylı ürün bulunamadı.</Empty>
           ) : (
-            <TrendyolImportForm action={importTrendyolAction} candidates={data.candidates} />
+            <TrendyolImportForm action={importTrendyolProductAction} candidates={data.candidates} />
           )}
         </>
       )}

@@ -1,0 +1,2 @@
+ALTER TABLE "product_colors" ADD COLUMN "trendyol_key" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "product_colors_trendyol_key_idx" ON "product_colors" USING btree ("product_id","trendyol_key") WHERE "product_colors"."trendyol_key" is not null;
