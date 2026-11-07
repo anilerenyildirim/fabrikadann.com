@@ -67,8 +67,8 @@ export class StaleStockError extends Error {
  */
 export async function reservedByVariant(tx: DbOrTx, variantIds?: string[]): Promise<Map<string, number>> {
   const reserved = await siteReservedByVariant(tx, variantIds);
-  for (const [variantId, n] of await trendyolReservedByVariant(tx, variantIds)) {
-    reserved.set(variantId, (reserved.get(variantId) ?? 0) + n);
+  for (const source of [await trendyolReservedByVariant(tx, variantIds), await marketplaceReservedByVariant(tx, variantIds)]) {
+    for (const [variantId, n] of source) reserved.set(variantId, (reserved.get(variantId) ?? 0) + n);
   }
   return reserved;
 }
@@ -152,11 +152,70 @@ export async function settleTrendyolForCount(tx: Tx, variantIds: string[]): Prom
   return new Map(result.rows.map((r) => [r.variant_id, Number(r.n)]));
 }
 
-/** Toplu depo sayımı için: site + Trendyol (kapatılarak) ayrılmış adetler. Numaralar kilitli olmalı. */
+// Pazaryerlerinde (N11) henüz kargoya verilmemiş paketler
+const MARKETPLACE_UNSHIPPED = ["Created", "Picking"];
+const MARKETPLACE_RELEASED = ["Cancelled", "UnSupplied", "UnPacked"];
+
+/** Kargolanmamış pazaryeri siparişleri için stoktan düşülmüş adet (numara başına). */
+export async function marketplaceReservedByVariant(tx: DbOrTx, variantIds?: string[]): Promise<Map<string, number>> {
+  const filter = variantIds?.length ? sql`and s.variant_id in ${variantIds}` : sql``;
+  const result = await tx.execute<{ variant_id: string; n: number }>(sql`
+    select s.variant_id, sum(least(s.deducted, u.qty))::int as n
+    from marketplace_order_stock s
+    join (
+      select p.channel, p.order_number, l->>'stockCode' as stock_code, sum((l->>'quantity')::int) as qty
+      from marketplace_packages p, jsonb_array_elements(p.lines) l
+      where p.status in ${MARKETPLACE_UNSHIPPED}
+        and coalesce(l->>'status', '') not in ${MARKETPLACE_RELEASED}
+      group by 1, 2, 3
+    ) u on u.channel = s.channel and u.order_number = s.order_number and u.stock_code = s.stock_code
+    where s.variant_id is not null and s.deducted > 0 ${filter}
+    group by s.variant_id
+  `);
+  return new Map(result.rows.map((r) => [r.variant_id, Number(r.n)]));
+}
+
+/** Depo sayımı pazaryeri kayıtlarını da kapatır (settleTrendyolForCount ile aynı mantık; eşleşme stok koduyla). */
+export async function settleMarketplaceForCount(tx: Tx, variantIds: string[]): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const result = await tx.execute<{ variant_id: string; n: number }>(sql`
+    with targets as (
+      select id, sku from variants where id in ${variantIds}
+    ),
+    rows as (
+      select s.channel, s.order_number, s.stock_code, t.id as variant_id
+      from marketplace_order_stock s
+      join targets t on s.variant_id = t.id or (s.variant_id is null and s.stock_code = t.sku)
+    ),
+    settled as (
+      update marketplace_order_stock s
+      set variant_id = r.variant_id, deducted = s.quantity, shortfall = 0
+      from rows r
+      where s.channel = r.channel and s.order_number = r.order_number and s.stock_code = r.stock_code
+        and (s.deducted <> s.quantity or s.shortfall <> 0 or s.variant_id is null)
+      returning s.order_number
+    ),
+    u as (
+      select p.channel, p.order_number, l->>'stockCode' as stock_code, sum((l->>'quantity')::int) as qty
+      from marketplace_packages p, jsonb_array_elements(p.lines) l
+      where p.status in ${MARKETPLACE_UNSHIPPED}
+        and coalesce(l->>'status', '') not in ${MARKETPLACE_RELEASED}
+      group by 1, 2, 3
+    )
+    select r.variant_id, sum(least(s.quantity, u.qty))::int as n
+    from rows r
+    join marketplace_order_stock s on s.channel = r.channel and s.order_number = r.order_number and s.stock_code = r.stock_code
+    join u on u.channel = r.channel and u.order_number = r.order_number and u.stock_code = r.stock_code
+    group by r.variant_id
+  `);
+  return new Map(result.rows.map((r) => [r.variant_id, Number(r.n)]));
+}
+
+/** Toplu depo sayımı için: site + Trendyol + pazaryerleri (kapatılarak) ayrılmış adetler. Numaralar kilitli olmalı. */
 export async function physicalCountReserved(tx: Tx, variantIds: string[]): Promise<Map<string, number>> {
   const reserved = await siteReservedByVariant(tx, variantIds);
-  for (const [variantId, n] of await settleTrendyolForCount(tx, variantIds)) {
-    reserved.set(variantId, (reserved.get(variantId) ?? 0) + n);
+  for (const source of [await settleTrendyolForCount(tx, variantIds), await settleMarketplaceForCount(tx, variantIds)]) {
+    for (const [variantId, n] of source) reserved.set(variantId, (reserved.get(variantId) ?? 0) + n);
   }
   return reserved;
 }
@@ -188,7 +247,8 @@ export async function setPhysicalCount(tx: Tx, variantId: string, physical: numb
   await tx.select({ id: variants.id }).from(variants).where(eq(variants.id, variantId)).for("update");
   const site = (await siteReservedByVariant(tx, [variantId])).get(variantId) ?? 0;
   const trendyol = (await settleTrendyolForCount(tx, [variantId])).get(variantId) ?? 0;
-  const reserved = site + trendyol;
+  const marketplace = (await settleMarketplaceForCount(tx, [variantId])).get(variantId) ?? 0;
+  const reserved = site + trendyol + marketplace;
   const available = Math.max(0, physical - reserved);
   await setStock(tx, variantId, available, meta);
   return { available, reserved, shortfall: Math.max(0, reserved - physical) };

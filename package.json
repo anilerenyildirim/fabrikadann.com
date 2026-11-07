@@ -22,6 +22,7 @@
     "maintenance": "tsx scripts/maintenance.ts",
     "trendyol:sync": "tsx scripts/trendyol-sync.ts",
     "trendyol:compare": "tsx scripts/trendyol-stock-compare.ts",
+    "marketplace:sync": "tsx scripts/marketplace-sync.ts",
     "logo:trace": "node scripts/trace-logo.mjs"
   },
   "dependencies": {

@@ -44,6 +44,7 @@ export const stockReason = pgEnum("stock_reason", [
   "initial",
   "purchase",
   "supplier_return",
+  "n11",
 ]);
 
 // ---------- Kullanıcılar ve oturumlar ----------
@@ -673,14 +674,13 @@ export const marketplaceCategoryMap = pgTable(
 
 export const marketplaceListingStatus = pgEnum("marketplace_listing_status", ["pending", "active", "failed"]);
 
-// Bir numaranın pazaryerindeki karşılığı (stockCode = variants.sku)
+// Bir numaranın pazaryerindeki karşılığı (stockCode = variants.sku). Numara silinse de kayıt kalır
+// (variant_id boşalır): pazaryerine 0 gönderilir, eski stokla satışta kalmaz.
 export const marketplaceListings = pgTable(
   "marketplace_listings",
   {
     channel: text("channel").notNull(),
-    variantId: uuid("variant_id")
-      .notNull()
-      .references(() => variants.id, { onDelete: "cascade" }),
+    variantId: uuid("variant_id").references(() => variants.id, { onDelete: "set null" }),
     stockCode: text("stock_code").notNull(),
     productId: uuid("product_id").notNull(),
     status: marketplaceListingStatus("status").notNull(),
@@ -694,8 +694,8 @@ export const marketplaceListings = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    primaryKey({ columns: [t.channel, t.variantId] }),
-    uniqueIndex("marketplace_listings_stock_code_idx").on(t.channel, t.stockCode),
+    primaryKey({ columns: [t.channel, t.stockCode] }),
+    uniqueIndex("marketplace_listings_variant_idx").on(t.channel, t.variantId).where(sql`${t.variantId} is not null`),
   ],
 );
 

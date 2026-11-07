@@ -270,12 +270,17 @@ export async function sendProductToN11(ctx: AdminContext, api: N11Api, productId
   await db.transaction(async (tx) => {
     for (const s of skus) {
       const v = bySku.get(s.stockCode)!;
+      // Numaranın SKU'su değiştiyse eski kayıt numarasından ayrılır (eski stok koduna 0 gönderilir)
+      await tx
+        .update(marketplaceListings)
+        .set({ variantId: null })
+        .where(and(eq(marketplaceListings.channel, CHANNEL), eq(marketplaceListings.variantId, v.id), ne(marketplaceListings.stockCode, s.stockCode)));
       await tx
         .insert(marketplaceListings)
         .values({ channel: CHANNEL, variantId: v.id, stockCode: s.stockCode, productId: product.id, status: "pending", taskId: task.taskId, error: null })
         .onConflictDoUpdate({
-          target: [marketplaceListings.channel, marketplaceListings.variantId],
-          set: { stockCode: s.stockCode, status: "pending", taskId: task.taskId, error: null },
+          target: [marketplaceListings.channel, marketplaceListings.stockCode],
+          set: { variantId: v.id, productId: product.id, status: "pending", taskId: task.taskId, error: null },
         });
     }
     await tx.insert(marketplaceTasks).values({ channel: CHANNEL, taskId: task.taskId!, kind: "create" }).onConflictDoNothing();
