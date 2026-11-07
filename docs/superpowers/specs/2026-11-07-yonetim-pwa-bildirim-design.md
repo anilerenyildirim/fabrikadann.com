@@ -86,14 +86,18 @@ Site siparişinde gönderim, `completePayment` sonunda e-postayla birlikte hemen
 yutulur ve günlüğe yazılır). Trendyol senkronu çalışma sonunda `dispatchPending` çağırır. Bakım betiği (5 dk) de
 çağırır: kaçanlar en geç 5 dakikada gider. E-posta bildirimleri değişmez.
 
-Stok bildirimi yalnızca satışlarda (`reason` `order` ya da `trendyol`) üretilir; elle düzeltme, sayım, alış iadesi
-üretmez. Site siparişinde stok sipariş oluşturulurken (ödeme öncesi) düşer; uyarı o anda gelir — satılabilir stok
-o anda azalmıştır. Ödenmeyen sipariş iptal olunca stok geri gelir; ayrıca bildirim gönderilmez.
+Stok bildirimi yalnızca satışlarda üretilir; elle düzeltme, sayım, alış iadesi üretmez. Site siparişinde stok
+sipariş oluşturulurken ayrılır ama uyarı **ödeme alınınca** gelir (`completePayment`): ödenmeyen sipariş açarak
+yöneticilere bildirim düşürülemez. Trendyol satışında uyarı stok düşülürken gelir.
+
+İnceleme sonrası (07.11.2026): gönderim kayıtları kısa bir işlemle alır (`claimed_at`, 5 dk süre, deneme +1) ve ağ
+çağrısını işlem dışında yapar; site ödemesinde gönderim route'ta yanıt sonrasına (`after()`) bırakılır; manifest
+kapsamı `/yonetim`; service worker açık pencereye geçemezse yeni pencere açar.
 
 ### PWA
 
 - Manifest: `src/app/yonetim/manifest.webmanifest/route.ts` (statik JSON; `name` "Fabrikadann Yönetim",
-  `short_name` "Fabrikadann", `start_url` `/yonetim`, `scope` `/yonetim/`, `display` `standalone`, `theme_color`
+  `short_name` "Fabrikadann", `start_url` `/yonetim`, `scope` `/yonetim`, `display` `standalone`, `theme_color`
   ve `background_color` `#000000`/`#ffffff`, simgeler).
 - Simgeler: `public/yonetim/icon-192.png`, `icon-512.png`, `apple-touch-icon.png` (180), `icon-maskable-512.png`;
   logodan bir kez `scripts/make-pwa-icons.ts` (sharp) ile üretilip depoya eklenir. Bildirim simgesi ve rozet
