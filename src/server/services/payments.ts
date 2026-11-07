@@ -1,6 +1,7 @@
 import { logError } from "@/server/log";
 import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
-import { db, schema } from "@/server/db";
+import { db, schema, type Tx } from "@/server/db";
+import { enqueueNotification } from "@/server/notifications/outbox";
 import { randomToken } from "@/server/auth/crypto";
 import { getPaymentProvider } from "@/server/payments";
 import { sendMail } from "@/server/mail";
@@ -8,7 +9,7 @@ import { formatPrice } from "@/lib/money";
 import { audit } from "./audit";
 import { OrderError, tryReviveCancelledOrder } from "./orders";
 
-const { orders, payments } = schema;
+const { orders, orderItems, payments } = schema;
 
 export class PaymentError extends Error {}
 
@@ -64,6 +65,22 @@ export type CompletionStatus = "paid" | "failed" | "already_processed" | "amount
  */
 export async function completePayment(outcome: PaymentOutcome): Promise<{ status: CompletionStatus; orderNumber?: string; orderId?: string }> {
   const result = await db.transaction(async (tx) => {
+    const r = await settlePayment(tx, outcome);
+    await enqueueStoreNotification(tx, r);
+    return r;
+  });
+
+  if (result.status === "paid" && result.orderId) {
+    await sendOrderConfirmation(result.orderId).catch((e) => logError("Sipariş e-postası gönderilemedi", e));
+    await sendStoreNotification(result.orderId, "paid").catch((e) => logError("Mağaza sipariş bildirimi gönderilemedi", e));
+  }
+  if ((result.status === "needs_refund" || result.status === "amount_mismatch") && result.orderId) {
+    await sendStoreNotification(result.orderId, "refund").catch((e) => logError("Mağaza iade uyarısı gönderilemedi", e));
+  }
+  return result;
+}
+
+async function settlePayment(tx: Tx, outcome: PaymentOutcome) {
     const [payment] = await tx.select().from(payments).where(eq(payments.token, outcome.token)).for("update");
     if (!payment) return { status: "not_found" as const };
     const [order] = await tx.select().from(orders).where(eq(orders.id, payment.orderId)).for("update");
@@ -117,16 +134,33 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
     // Para alındı ama sipariş karşılanamıyor (stok yok ya da çift ödeme): iade gerekli
     await audit({ action: "payment.needs_refund", target: order.number, data: { paymentId: payment.id } }, tx);
     return { status: "needs_refund" as const, ...base };
-  });
+}
 
-  if (result.status === "paid" && result.orderId) {
-    await sendOrderConfirmation(result.orderId).catch((e) => logError("Sipariş e-postası gönderilemedi", e));
-    await sendStoreNotification(result.orderId, "paid").catch((e) => logError("Mağaza sipariş bildirimi gönderilemedi", e));
+/** Yöneticilerin telefonuna: yeni sipariş ya da iade gerekli (olayla aynı işlemde kutuya yazılır). */
+async function enqueueStoreNotification(tx: Tx, r: { status: string; orderNumber?: string; orderId?: string }) {
+  if (!r.orderId || !r.orderNumber) return;
+  if (r.status === "paid") {
+    const [o] = await tx.select({ total: orders.total }).from(orders).where(eq(orders.id, r.orderId));
+    const items = await tx.select({ quantity: orderItems.quantity }).from(orderItems).where(eq(orderItems.orderId, r.orderId));
+    const count = items.reduce((n, i) => n + i.quantity, 0);
+    await enqueueNotification(tx, {
+      kind: "order_new",
+      source: "site",
+      title: `Yeni sipariş ${r.orderNumber}`,
+      body: `${count} ürün · ${formatPrice(o?.total ?? 0)}`,
+      url: `/yonetim/siparisler/${r.orderId}`,
+      dedupeKey: `site:order:${r.orderNumber}`,
+    });
+  } else if (r.status === "needs_refund" || r.status === "amount_mismatch") {
+    await enqueueNotification(tx, {
+      kind: "refund_needed",
+      source: "site",
+      title: `İade gerekli: ${r.orderNumber}`,
+      body: "Ödeme alındı, sipariş karşılanamadı. iyzico panelinden iade edin.",
+      url: `/yonetim/siparisler/${r.orderId}`,
+      dedupeKey: `site:refund:${r.orderNumber}`,
+    });
   }
-  if ((result.status === "needs_refund" || result.status === "amount_mismatch") && result.orderId) {
-    await sendStoreNotification(result.orderId, "refund").catch((e) => logError("Mağaza iade uyarısı gönderilemedi", e));
-  }
-  return result;
 }
 
 /** Yeni sipariş bildirimi alan mağaza adresi (ORDER_NOTIFY_EMAIL; boş bırakılırsa bildirim gönderilmez). */

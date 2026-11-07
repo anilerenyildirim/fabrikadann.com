@@ -576,3 +576,36 @@ describe("senkron", () => {
     expect(fake.posts.length).toBe(n + 1);
   });
 });
+
+describe("bildirimler", () => {
+  const notes = () => db.select().from(schema.notifications);
+
+  test("yeni Trendyol siparişi bir kez order_new yazar", async () => {
+    await variantWithBarcode(5);
+    await run();
+    fake.packages = [pkg("T50", "Created", [{ barcode: "8680000000001", quantity: 2 }], 50)];
+    await run();
+    await run();
+    const rows = (await notes()).filter((n) => n.kind === "order_new");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ source: "trendyol", dedupeKey: "trendyol:order:T50", title: "Trendyol siparişi T50", body: "2 ürün", url: "/yonetim/stok" });
+  });
+
+  test("ilk (baseline) çalıştırmadaki eski sipariş bildirim yazmaz", async () => {
+    await variantWithBarcode(5);
+    fake.packages = [pkg("T51", "Created", [{ barcode: "8680000000001", quantity: 1 }])];
+    await run();
+    expect(await notes()).toHaveLength(0);
+  });
+
+  test("stok yetmeyen Trendyol siparişi eksik adedi yazar ve stok tükendi bildirimi verir", async () => {
+    await variantWithBarcode(1);
+    await run();
+    fake.packages = [pkg("T52", "Created", [{ barcode: "8680000000001", quantity: 2 }], 52)];
+    await run();
+    const order = (await notes()).find((n) => n.kind === "order_new");
+    expect(order?.body).toBe("2 ürün · 1 adet için sitede stok yoktu");
+    const stock = (await notes()).find((n) => n.kind === "stock_out");
+    expect(stock).toMatchObject({ source: "trendyol", dedupeKey: "stock:Trendyol T52" });
+  });
+});

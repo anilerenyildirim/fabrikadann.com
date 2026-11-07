@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { completePayment, startPayment } from "@/server/services/payments";
+import { db, schema } from "@/server/db";
 import { makeProduct, resetDb } from "../helpers/db";
 import { orderFor } from "../helpers/order";
 
@@ -60,4 +61,33 @@ test("ORDER_NOTIFY_EMAIL adresi değiştirir; boşsa mağaza bildirimi gönderil
   const b = await pending();
   await completePayment({ token: b.token, success: true, amount: b.order.total });
   expect(sendMail.mock.calls.map((c) => c[0].to)).toEqual(["ayse@ornek.com"]);
+});
+
+const notes = () => db.select().from(schema.notifications);
+
+test("ödenen sipariş bildirim kutusuna order_new yazar; müşteri bilgisi yok; ikinci işlemede ikinci kayıt yok", async () => {
+  const { order, token } = await pending();
+  await completePayment({ token, success: true, amount: order.total });
+  await completePayment({ token, success: true, amount: order.total });
+  const rows = (await notes()).filter((n) => n.kind === "order_new");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ source: "site", dedupeKey: `site:order:${order.number}`, title: `Yeni sipariş ${order.number}`, url: `/yonetim/siparisler/${order.id}` });
+  expect(rows[0]!.body).toMatch(/^1 ürün · /);
+  expect(rows[0]!.body).not.toContain("Ayşe");
+});
+
+test("iade gereken ödeme refund_needed yazar", async () => {
+  const { order, token } = await pending();
+  await completePayment({ token, success: true, amount: 1 });
+  const rows = (await notes()).filter((n) => n.kind === "refund_needed");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ dedupeKey: `site:refund:${order.number}`, title: `İade gerekli: ${order.number}` });
+});
+
+test("sipariş son stoğu bitirince stok tükendi bildirimi", async () => {
+  const { variants } = await makeProduct({ name: "Bot", sizes: [{ size: "40", stock: 1 }] });
+  const order = await orderFor({ guestToken: "g2" }, variants[0]!.id);
+  const rows = (await notes()).filter((n) => n.kind === "stock_out");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ source: "site", dedupeKey: `stock:${order.number}`, body: "Bot Siyah 40: 0" });
 });

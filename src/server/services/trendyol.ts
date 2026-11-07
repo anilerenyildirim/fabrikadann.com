@@ -4,6 +4,8 @@ import { describeError } from "@/server/log";
 import { TrendyolError, trendyolConfig, type TrendyolClient, type TrendyolPackage } from "@/server/trendyol/client";
 import { audit } from "./audit";
 import { returnStock } from "./stock";
+import { enqueueNotification } from "@/server/notifications/outbox";
+import { noteStockDrop } from "@/server/notifications/stock-alert";
 import { discountedPrice } from "@/server/trendyol/products";
 
 /**
@@ -329,6 +331,18 @@ async function applyOrder(orderNumber: string, baselineAt: number | undefined, b
         await tx.insert(trendyolOrderStock).values({ orderNumber, barcode, ...values });
       }
     }
+    // Yöneticilere: ilk kez görülen, senkron açıldıktan sonra verilmiş sipariş
+    if (existing.length === 0 && !preexisting && wanted.size > 0) {
+      const count = [...wanted.values()].reduce((n, q) => n + q, 0);
+      await enqueueNotification(tx, {
+        kind: "order_new",
+        source: "trendyol",
+        title: `Trendyol siparişi ${orderNumber}`,
+        body: `${count} ürün${result.shortfall > 0 ? ` · ${result.shortfall} adet için sitede stok yoktu` : ""}`,
+        url: "/yonetim/stok",
+        dedupeKey: `trendyol:order:${orderNumber}`,
+      });
+    }
     // Muhasebe: satışın maliyeti ve üreticisi ilk eşleşmede sabitlenir (alış fiyatı sonradan değişse de geçmiş değişmez)
     await tx.execute(sql`
       update trendyol_order_stock s
@@ -367,6 +381,7 @@ async function takeAvailable(tx: Tx, variantId: string, quantity: number, refere
       reference,
       note: taken < quantity ? `Trendyol satışı; ${quantity - taken} adet için stok yoktu` : "Trendyol satışı",
     });
+    await noteStockDrop(tx, { variantId, before: v!.stock, after: v!.stock - taken, reference, source: "trendyol" });
   }
   return taken;
 }
