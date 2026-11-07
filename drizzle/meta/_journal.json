@@ -120,6 +120,13 @@
       "when": 1794070074316,
       "tag": "0016_urun_pazaryeri_ozellikleri",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794072173423,
+      "tag": "0017_api_anahtarlari",
+      "breakpoints": true
     }
   ]
 }

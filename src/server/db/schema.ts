@@ -597,7 +597,7 @@ export const settings = pgTable(
 
 // ---------- Bildirimler (yönetici telefonları, Web Push) ----------
 
-export const notificationKind = pgEnum("notification_kind", ["order_new", "refund_needed", "stock_low", "stock_out", "test"]);
+export const notificationKind = pgEnum("notification_kind", ["order_new", "refund_needed", "stock_low", "stock_out", "test", "integration"]);
 
 export const pushSubscriptions = pgTable(
   "push_subscriptions",
@@ -755,4 +755,24 @@ export const marketplaceOrderStock = pgTable(
 export const marketplaceSyncState = pgTable("marketplace_sync_state", {
   channel: text("channel").primaryKey(),
   state: jsonb("state").notNull(),
+});
+
+// ---------- Entegrasyon anahtarları ----------
+
+// Panelden girilen anahtarlar (AES-256-GCM, ana anahtar SECRETS_KEY). Değer hiçbir zaman düz metin saklanmaz.
+export const integrationSecrets = pgTable("integration_secrets", {
+  name: text("name").primaryKey(),
+  ciphertext: text("ciphertext").notNull(),
+  last4: text("last4").notNull(),
+  updatedAt: updatedAt(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+// Entegrasyonların son kullanma tarihi ve son sağlık denemesi
+export const integrations = pgTable("integrations", {
+  id: text("id").primaryKey(),
+  expiresAt: date("expires_at", { mode: "string" }),
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  ok: boolean("ok"),
+  message: text("message"),
 });

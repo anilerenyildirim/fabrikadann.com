@@ -49,6 +49,8 @@ services:
       N11_API_SECRET: ${N11_API_SECRET:-}
       # AI Asistan (Claude API; boşsa kapalı)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Panelden girilen API anahtarlarını şifreleyen ana anahtar (Ayarlar > API anahtarları)
+      SECRETS_KEY: ${SECRETS_KEY:-}
       # Uygulama kısıtlı rolle bağlanır
       DATABASE_URL: postgres://fabrikadann_app:${APP_DB_PASSWORD}@db:5432/fabrikadann
       UPLOAD_DIR: /app/uploads
