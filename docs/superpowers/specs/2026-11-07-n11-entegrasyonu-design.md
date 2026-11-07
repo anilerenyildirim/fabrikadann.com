@@ -84,7 +84,9 @@ Trendyol tablolarına dokunulmaz.
   (≤ 100); `description` = ürün açıklaması (düz metin; HTML kaçışlı, paragraflar `<p>`); `categoryId` eşlemeden;
   `currencyType` TL; `preparingDay`, `shipmentTemplate`, `vatRate` ayarlardan; `quantity` = satılabilir stok
   (≤ 999999); `salePrice` = `listPrice` = N11 fiyatı (`(kuruş/100).toFixed(2)`); `images` = rengin görselleri
-  `{APP_URL}/medya/...` (https, sırayla, en fazla 8); `barcode` yalnızca geçerli EAN-13 ve `2` ile başlamıyorsa
+  `{APP_URL}/medya/p/{id}-1200.jpg` (https, sırayla, en fazla 8; site görselleri yalnızca WebP saklandığından
+`/medya` route'u `.jpg` isteğinde aynı dosyayı sharp ile JPEG'e çevirip sunar — pazaryerleri WebP'yi kabul
+etmeyebilir; yanıt değişmez ve uzun süre önbelleklenir); `barcode` yalnızca geçerli EAN-13 ve `2` ile başlamıyorsa
   (iç üretim barkodları gönderilmez).
 - **Özellikler:** eşlemedeki sabit özellikler + Marka (id 1, `customValue` = `n11Brand`) + Renk (429; listede aynı
   ad varsa `valueId`, yoksa serbestse `customValue`) + Numara (adı "Numara" ya da "Beden" olan varyant özelliği;
