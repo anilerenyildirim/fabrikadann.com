@@ -20,9 +20,14 @@ export default async function SettingsPage() {
         title="Ayarlar"
         description="Değişiklikler kaydedilince vitrinde hemen geçerli olur ve işlem günlüğüne yazılır."
         actions={
-          <ButtonLink href="/yonetim/ayarlar/bildirimler" variant="secondary">
-            Telefon bildirimleri
-          </ButtonLink>
+          <>
+            <ButtonLink href="/yonetim/ayarlar/api-anahtarlari" variant="secondary">
+              API anahtarları
+            </ButtonLink>
+            <ButtonLink href="/yonetim/ayarlar/bildirimler" variant="secondary">
+              Telefon bildirimleri
+            </ButtonLink>
+          </>
         }
       />
       <SettingsForm
