@@ -40,6 +40,10 @@ services:
       MAIL_FROM: ${MAIL_FROM:-fabrikadann <info@fabrikadann.com>}
       # Yeni sipariş ve iade uyarısı bildirimi; boş bırakılırsa gönderilmez
       ORDER_NOTIFY_EMAIL: ${ORDER_NOTIFY_EMAIL-kurumsal@fabrikadann.com}
+      # Yöneticilere anlık bildirim (Web Push); boşsa bildirimler gönderilmez (bkz. docs/CANLIYA-ALMA.md §5d)
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Uygulama kısıtlı rolle bağlanır
       DATABASE_URL: postgres://fabrikadann_app:${APP_DB_PASSWORD}@db:5432/fabrikadann
       UPLOAD_DIR: /app/uploads
