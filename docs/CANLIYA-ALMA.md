@@ -53,6 +53,8 @@ TRENDYOL_ENV=prod
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:info@fabrikadann.com
+# AI Asistan (isteğe bağlı): fotoğraftan ürün bilgisi önerisi. console.anthropic.com > API Keys
+ANTHROPIC_API_KEY=
 # N11 (isteğe bağlı; bkz. §5e). N11 satıcı paneli > Hesabım > API Hesapları
 N11_API_KEY=
 N11_API_SECRET=

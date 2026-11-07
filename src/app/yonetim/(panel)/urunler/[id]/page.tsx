@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionButton, MoveButtons } from "@/components/admin/forms";
 import { ImageUploader } from "@/components/admin/product/ImageUploader";
+import { AiAssistantPanel } from "@/components/admin/product/AiAssistantPanel";
 import { ProductInfoForm } from "@/components/admin/product/ProductInfoForm";
 import {
   AddColorForm,
@@ -20,6 +21,7 @@ import { requireAdmin } from "@/server/auth/current";
 import { categoryOptions, getAdminProduct, publishProblem, type ProductStatus } from "@/server/services/admin/catalog";
 import { manufacturerOptions } from "@/server/services/admin/manufacturers";
 import { adjustStockAction } from "../../stok/actions";
+import { applySuggestionAction, suggestAction } from "../asistan-actions";
 import {
   addColorAction,
   addVariantsAction,
@@ -74,6 +76,10 @@ export default async function EditProductPage({ params, searchParams }: Props) {
   const problem = await publishProblem(product.id);
   const totalStock = product.colors.reduce((n, c) => n + c.variants.reduce((m, v) => m + v.stock, 0), 0);
   const isNew = sp.yeni === "1";
+  const assistantAuto = sp.asistan === "1";
+  const missingPhotos = sp.eksik === "1";
+  const aiEnabled = !!process.env.ANTHROPIC_API_KEY?.trim();
+  const hasImages = product.colors.some((c) => c.images.length > 0);
 
   return (
     <>
@@ -126,8 +132,15 @@ export default async function EditProductPage({ params, searchParams }: Props) {
         </div>
       )}
 
+      {missingPhotos && (
+        <div className="mb-6">
+          <FormNotice>Bazı fotoğraflar yüklenemedi. Aşağıda Renkler ve görseller bölümünden yeniden ekleyin.</FormNotice>
+        </div>
+      )}
+
       <nav aria-label="Bölümler" className="rail -mx-4 mb-8 gap-1 border-y border-rule px-4 md:mx-0 md:px-0">
         {[
+          ["#asistan", "AI Asistan"],
           ["#bilgiler", "Bilgiler"],
           ["#renkler", "Renkler ve görseller"],
           ["#numaralar", "Numaralar ve stok"],
@@ -137,6 +150,30 @@ export default async function EditProductPage({ params, searchParams }: Props) {
           </a>
         ))}
       </nav>
+
+      <Section
+        id="asistan"
+        title="AI Asistan"
+        description="Fotoğraflara bakıp ad, açıklama, malzeme ve bakım, kategori, renk adı ve N11 özelliklerini önerir. Hiçbir şey siz uygulamadan değişmez."
+      >
+        <AiAssistantPanel
+          productId={product.id}
+          current={{
+            name: product.name,
+            description: product.description,
+            details: product.details,
+            categoryId: product.categoryId,
+            colors: product.colors.map((c) => ({ id: c.id, name: c.name })),
+            n11Attributes: product.marketplaceAttrs?.n11 ?? [],
+          }}
+          categories={categories}
+          enabled={aiEnabled}
+          hasImages={hasImages}
+          autoStart={assistantAuto}
+          suggest={suggestAction}
+          apply={applySuggestionAction}
+        />
+      </Section>
 
       <Section id="bilgiler" title="Bilgiler">
         <ProductInfoForm

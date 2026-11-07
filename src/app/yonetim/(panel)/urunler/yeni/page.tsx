@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { PhotoStartForm } from "@/components/admin/product/PhotoStartForm";
 import { ProductInfoForm } from "@/components/admin/product/ProductInfoForm";
 import { PageHeader } from "@/components/admin/ui";
 import { requireAdmin } from "@/server/auth/current";
 import { categoryOptions } from "@/server/services/admin/catalog";
 import { manufacturerOptions } from "@/server/services/admin/manufacturers";
-import { createProductAction } from "../actions";
+import { createProductAction, uploadImageAction } from "../actions";
+import { startDraftAction } from "../asistan-actions";
 
 export const metadata: Metadata = { title: "Yeni ürün" };
 
@@ -16,8 +18,17 @@ export default async function NewProductPage() {
       <PageHeader
         title="Yeni ürün"
         back={{ href: "/yonetim/urunler", label: "Ürünler" }}
-        description="Önce temel bilgileri girin. Kaydettikten sonra renk, görsel ve numaraları ekleyip ürünü yayına alırsınız."
+        description="Fotoğraflarla başlayıp AI Asistan'ın önerilerini kullanabilir ya da aşağıdaki formla bilgileri elle girebilirsiniz."
       />
+      <div className="mb-10">
+        <PhotoStartForm
+          start={startDraftAction}
+          upload={uploadImageAction}
+          manufacturers={manufacturers}
+          enabled={!!process.env.ANTHROPIC_API_KEY?.trim()}
+        />
+      </div>
+      <h2 className="label mb-4">Ya da elle girin</h2>
       <ProductInfoForm
         mode="create"
         action={createProductAction}
