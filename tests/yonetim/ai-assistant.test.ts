@@ -17,12 +17,9 @@ test("yalnız seçilen alanlar değişir; renk adı ve N11 özellikleri uygulan�
   const { product } = await makeProduct({ name: "Eski ad" });
   const [color] = await db.select().from(schema.productColors).where(eq(schema.productColors.productId, product.id));
   const [cat] = await db.insert(schema.categories).values({ name: "Bot", slug: "bot" }).returning();
-  await applySuggestion(ctx, product.id, {
-    description: "Yeni açıklama",
-    categoryId: cat!.id,
-    colors: [{ colorId: color!.id, name: "Siyah" }],
-    n11Attributes: [{ id: 7794, name: "Topuk Tipi", valueId: null, customValue: "Blok" }],
-  });
+  await applySuggestion(ctx, product.id, { description: "Yeni açıklama", categoryId: cat!.id, colors: [{ colorId: color!.id, name: "Siyah" }] });
+  // N11 özellikleri ürünün (artık) kendi kategorisi için önerildi
+  await applySuggestion(ctx, product.id, { n11Attributes: [{ id: 7794, name: "Topuk Tipi", valueId: null, customValue: "Blok" }] });
   const p = await productRow(product.id);
   expect(p.name).toBe("Eski ad");
   expect(p.description).toBe("Yeni açıklama");
@@ -47,4 +44,27 @@ test("aynı üründe iki renge aynı ad verilemez", async () => {
   await expect(
     applySuggestion(ctx, product.id, { colors: colors.map((c) => ({ colorId: c.id, name: "Siyah" })) }),
   ).rejects.toBeInstanceOf(AdminError);
+});
+
+test("taslakta yer tutucu adla açılan ürünün adresi yeni addan üretilir", async () => {
+  const [p] = await db.insert(schema.products).values({ name: "Yeni ürün", slug: "yeni-urun-3", price: 100000, status: "draft" }).returning();
+  await applySuggestion(ctx, p!.id, { name: "Fermuarlı Kadın Bot" });
+  expect((await productRow(p!.id)).slug).toBe("fermuarli-kadin-bot");
+  // yayındaki ürünün adresi değişmez
+  const { product } = await makeProduct({ name: "Eski" });
+  const before = (await productRow(product.id)).slug;
+  await applySuggestion(ctx, product.id, { name: "Yepyeni Ad" });
+  expect((await productRow(product.id)).slug).toBe(before);
+});
+
+test("kategori aynı anda değişiyorsa eski kategorinin N11 özellikleri kaydedilmez", async () => {
+  const { product } = await makeProduct();
+  const [cat] = await db.insert(schema.categories).values({ name: "Babet", slug: "babet" }).returning();
+  await applySuggestion(ctx, product.id, { categoryId: cat!.id, n11Attributes: [{ id: 1, name: "X", valueId: 2, customValue: null }] });
+  expect((await productRow(product.id)).marketplaceAttrs).toEqual({});
+});
+
+test("boş N11 değeri reddedilir", async () => {
+  const { product } = await makeProduct();
+  await expect(applySuggestion(ctx, product.id, { n11Attributes: [{ id: 1, name: "X", valueId: null, customValue: "" }] })).rejects.toThrow();
 });

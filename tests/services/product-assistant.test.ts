@@ -105,7 +105,8 @@ test("öneri: istek modeli, effort, yedek model ve görseller; kullanım günlü
   expect(p).toMatchObject({ model: "claude-opus-5-5", betas: ["server-side-fallback-2026-07-01"], fallbacks: "default", output_config: { effort: "medium" } });
   const content = (p.messages as { content: { type: string; source?: { media_type: string } }[] }[])[0]!.content;
   const images = content.filter((c) => c.type === "image");
-  expect(images).toHaveLength(3);
+  // tek renk: 4 fotoğrafın hepsi
+  expect(images).toHaveLength(4);
   expect(images[0]!.source!.media_type).toBe("image/webp");
   const [log] = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "ai.product_suggest"));
   expect(log!.data).toMatchObject({ inputTokens: 1200, outputTokens: 300 });
@@ -128,4 +129,27 @@ test("anahtar yoksa asistan kapalı", async () => {
   const { product } = await productWithImages(1);
   delete process.env.ANTHROPIC_API_KEY;
   await expect(suggestForProduct({ actorId: admin.id }, product.id, { n11: null })).rejects.toThrow(/ANTHROPIC_API_KEY/);
+});
+
+test("SDK yapılandırılmış çıktıyı çözemezse anlaşılır hata ve kullanım yine günlüğe", async () => {
+  const admin = await makeUser({ role: "admin" });
+  const { product } = await productWithImages(1);
+  const client = new FakeClient();
+  const Anthropic = (await import("@anthropic-ai/sdk")).default;
+  client.beta.messages.parse = (async () => {
+    throw new Anthropic.AnthropicError("Failed to parse structured output");
+  }) as unknown as AssistantClient["beta"]["messages"]["parse"];
+  const err = await suggestForProduct({ actorId: admin.id }, product.id, { client, n11: null }).catch((e) => e);
+  expect(err).toBeInstanceOf(AiAssistantError);
+  expect(err.message).toMatch(/öneri üretemedi/);
+  expect(await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "ai.product_suggest"))).toHaveLength(1);
+});
+
+test("tek renkte 6 fotoğrafın hepsi incelenir", async () => {
+  const admin = await makeUser({ role: "admin" });
+  const { product } = await productWithImages(6);
+  const client = new FakeClient();
+  await suggestForProduct({ actorId: admin.id }, product.id, { client, n11: null }).catch(() => null);
+  const content = (client.calls[0]!.messages as { content: { type: string }[] }[])[0]!.content;
+  expect(content.filter((c) => c.type === "image")).toHaveLength(6);
 });

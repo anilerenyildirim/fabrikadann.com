@@ -17,12 +17,15 @@ import type { N11Api } from "@/server/services/admin/n11";
 
 const MODEL = "claude-opus-5-5";
 const MAX_IMAGES = 8;
-const IMAGES_PER_COLOR = 3;
+// Renk başına pay: tek renkte 8'e kadar, çok renkte her renkten en az 3
+const imagesPerColor = (colors: number) => Math.max(3, Math.floor(MAX_IMAGES / Math.max(colors, 1)));
 const MAX_VALUES = 80;
 // Ürün sayfasında kendiliğinden doldurulan N11 özellikleri: önerilmez
 const AUTO_ATTRS = ["marka", "renk", "numara", "beden", "kayıtlı ticari unvan", "iletişim adresi", "e-posta", "cinsiyet"];
 
 export class AiAssistantError extends Error {}
+
+const UNUSABLE = "AI Asistan bu fotoğraflar için öneri üretemedi. Başka fotoğraf ekleyip yeniden deneyin ya da bilgileri elle girin.";
 
 /** Testte sahtesi verilir. */
 export type AssistantClient = { beta: { messages: { parse: Anthropic["beta"]["messages"]["parse"] } } };
@@ -120,7 +123,8 @@ function describeAttributes(attrs: N11Attribute[]) {
 function assistantClient(): AssistantClient {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new AiAssistantError("AI Asistan kapalı: sunucuda ANTHROPIC_API_KEY tanımlayın.");
-  return new Anthropic({ apiKey: key, timeout: 120_000, maxRetries: 2 }) as unknown as AssistantClient;
+  // Cloudflare istekleri 100 sn'de keser: çağrı ve tek yeniden deneme bunun altında kalsın
+  return new Anthropic({ apiKey: key, timeout: 80_000, maxRetries: 0 }) as unknown as AssistantClient;
 }
 
 export async function suggestForProduct(
@@ -139,7 +143,7 @@ export async function suggestForProduct(
   const picked: { colorId: string; colorName: string; keys: string[] }[] = [];
   let total = 0;
   for (const c of product.colors) {
-    const keys = c.images.slice(0, IMAGES_PER_COLOR).map((i) => i.storageKey).slice(0, MAX_IMAGES - total);
+    const keys = c.images.slice(0, imagesPerColor(product.colors.length)).map((i) => i.storageKey).slice(0, MAX_IMAGES - total);
     total += keys.length;
     if (keys.length) picked.push({ colorId: c.id, colorName: c.name, keys });
   }
@@ -179,7 +183,8 @@ export async function suggestForProduct(
     ].join("\n\n"),
   });
 
-  let response: Awaited<ReturnType<AssistantClient["beta"]["messages"]["parse"]>>;
+  let response: Awaited<ReturnType<AssistantClient["beta"]["messages"]["parse"]>> | null = null;
+  let failure: AiAssistantError | null = null;
   try {
     response = await client.beta.messages.parse({
       model: MODEL,
@@ -191,20 +196,27 @@ export async function suggestForProduct(
       messages: [{ role: "user", content }],
     });
   } catch (e) {
-    if (e instanceof Anthropic.RateLimitError) throw new AiAssistantError("AI Asistan şu an yoğun. Bir dakika sonra yeniden deneyin.");
-    if (e instanceof Anthropic.AuthenticationError) throw new AiAssistantError("AI Asistan anahtarı geçersiz. Sunucudaki ANTHROPIC_API_KEY'i kontrol edin.");
-    if (e instanceof Anthropic.APIError) throw new AiAssistantError(`AI Asistan yanıt vermedi (${e.status ?? "bağlantı"}). Biraz sonra yeniden deneyin.`);
-    throw e;
+    if (e instanceof Anthropic.RateLimitError) failure = new AiAssistantError("AI Asistan şu an yoğun. Bir dakika sonra yeniden deneyin.");
+    else if (e instanceof Anthropic.AuthenticationError) failure = new AiAssistantError("AI Asistan anahtarı geçersiz. Sunucudaki ANTHROPIC_API_KEY'i kontrol edin.");
+    else if (e instanceof Anthropic.APIConnectionTimeoutError) failure = new AiAssistantError("AI Asistan zamanında yanıt vermedi. Daha az fotoğrafla ya da biraz sonra yeniden deneyin.");
+    else if (e instanceof Anthropic.APIError) failure = new AiAssistantError(`AI Asistan yanıt vermedi (${e.status ?? "bağlantı"}). Biraz sonra yeniden deneyin.`);
+    // Yanıt geldi ama şemaya uymadı (ret metni, yarım kalan yanıt): ücretlendirilmiş olabilir
+    else if (e instanceof Anthropic.AnthropicError) failure = new AiAssistantError(UNUSABLE);
+    else throw e;
   }
   await audit({
     action: "ai.product_suggest",
     actorId: adminCtx.actorId,
     ip: adminCtx.ip ?? null,
     target: product.id,
-    data: { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0, stop: response.stop_reason },
+    data: {
+      inputTokens: response?.usage?.input_tokens ?? 0,
+      outputTokens: response?.usage?.output_tokens ?? 0,
+      stop: response?.stop_reason ?? null,
+      error: failure?.message ?? null,
+    },
   });
-  if (response.stop_reason === "refusal" || !response.parsed_output) {
-    throw new AiAssistantError("AI Asistan bu fotoğraflar için öneri üretemedi. Başka fotoğraf ekleyip yeniden deneyin ya da bilgileri elle girin.");
-  }
+  if (failure) throw failure;
+  if (!response || response.stop_reason === "refusal" || !response.parsed_output) throw new AiAssistantError(UNUSABLE);
   return validateSuggestion(response.parsed_output as z.infer<typeof outputSchema>, ctx);
 }

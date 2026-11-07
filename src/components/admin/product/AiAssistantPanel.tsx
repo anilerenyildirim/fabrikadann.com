@@ -92,7 +92,12 @@ export function AiAssistantPanel({
     setBusy(null);
     if (r.error) return setError(r.error);
     setS(null);
-    setDone("Seçilen öneriler uygulandı. Kontrol edip ürünü yayına alabilirsiniz.");
+    const categoryChanged = "categoryId" in input && input.categoryId !== current.categoryId;
+    setDone(
+      categoryChanged
+        ? "Seçilen öneriler uygulandı. Kategori değiştiği için N11 özelliklerini almak üzere \"Fotoğraflardan öner\"e yeniden basın."
+        : "Seçilen öneriler uygulandı. Kontrol edip ürünü yayına alabilirsiniz.",
+    );
     router.refresh();
   }
 

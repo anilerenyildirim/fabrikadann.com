@@ -177,6 +177,8 @@ export default async function EditProductPage({ params, searchParams }: Props) {
 
       <Section id="bilgiler" title="Bilgiler">
         <ProductInfoForm
+          // AI Asistan uygulayınca form yeni değerlerle yeniden kurulsun (eski değerler geri yazılmasın)
+          key={product.updatedAt.toISOString()}
           mode="edit"
           action={updateProductAction}
           categories={categories}
@@ -216,7 +218,7 @@ export default async function EditProductPage({ params, searchParams }: Props) {
               <span className="label tabular mt-6 w-6 text-graphite" aria-hidden="true">
                 {ci + 1}.
               </span>
-              <RenameColorForm action={renameColorAction} colorId={color.id} name={color.name} />
+              <RenameColorForm key={`${color.id}-${color.name}`} action={renameColorAction} colorId={color.id} name={color.name} />
               <div className="flex items-start gap-3 pt-4">
                 <MoveButtons
                   action={moveColorAction}
