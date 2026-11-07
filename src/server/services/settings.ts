@@ -19,6 +19,13 @@ export const settingsSchema = z.object({
   announcement: z.string().max(200),
   // Satışla stok bu adede ya da altına inince yöneticilere bildirim (0: yalnızca tükenince)
   stockAlertThreshold: z.number().int().min(0).max(100),
+  // N11: fiyat = site fiyatı × (1 + oran/100) (üründe elle fiyat yoksa)
+  n11PricePercent: z.number().int().min(0).max(200),
+  n11PreparingDay: z.number().int().min(1).max(30),
+  n11VatRate: z.union([z.literal(0), z.literal(1), z.literal(10), z.literal(20)]),
+  // N11 panelinde Hesabım > Teslimat Bilgilerim'de oluşturulan kargo şablonunun adı
+  n11ShipmentTemplate: z.string().max(100),
+  n11Brand: z.string().max(60),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -38,6 +45,11 @@ export const defaultSettings: Settings = {
   trendyolUrl: "",
   announcement: "",
   stockAlertThreshold: 1,
+  n11PricePercent: 33,
+  n11PreparingDay: 2,
+  n11VatRate: 10,
+  n11ShipmentTemplate: "",
+  n11Brand: "Fabrikadann",
 };
 
 const KEY = "store";

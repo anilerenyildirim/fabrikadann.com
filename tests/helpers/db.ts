@@ -7,7 +7,8 @@ export async function resetDb() {
       product_colors, product_images, variants, stock_movements, carts, cart_items, orders,
       order_items, payments, audit_log, settings, trendyol_packages, trendyol_order_stock, trendyol_stock_push,
       manufacturers, product_supply, order_item_costs, purchases, purchase_items, ledger_entries,
-      push_subscriptions, notifications
+      push_subscriptions, notifications, marketplace_categories, marketplace_category_map, marketplace_listings,
+      marketplace_tasks, marketplace_packages, marketplace_order_stock, marketplace_sync_state
     RESTART IDENTITY CASCADE
   `);
 }

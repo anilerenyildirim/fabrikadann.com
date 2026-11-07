@@ -14,7 +14,13 @@ const schema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),
+  // N11 (ikisi birlikte ya da hiçbiri)
+  N11_API_KEY: z.string().optional(),
+  N11_API_SECRET: z.string().optional(),
 }).superRefine((e, ctx) => {
+  if (!!e.N11_API_KEY?.trim() !== !!e.N11_API_SECRET?.trim()) {
+    ctx.addIssue({ code: "custom", path: ["N11_API_KEY"], message: "N11_API_KEY ve N11_API_SECRET birlikte tanımlanmalı" });
+  }
   const set = [e.VAPID_PUBLIC_KEY, e.VAPID_PRIVATE_KEY, e.VAPID_SUBJECT].filter((v) => v?.trim()).length;
   if (set !== 0 && set !== 3) {
     ctx.addIssue({ code: "custom", path: ["VAPID_PUBLIC_KEY"], message: "VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY ve VAPID_SUBJECT birlikte tanımlanmalı" });

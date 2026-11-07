@@ -42,6 +42,11 @@ export default async function SettingsPage() {
           trendyolUrl: s.trendyolUrl,
           announcement: s.announcement,
           stockAlertThreshold: String(s.stockAlertThreshold),
+          n11PricePercent: String(s.n11PricePercent),
+          n11PreparingDay: String(s.n11PreparingDay),
+          n11VatRate: String(s.n11VatRate),
+          n11ShipmentTemplate: s.n11ShipmentTemplate,
+          n11Brand: s.n11Brand,
         }}
       />
     </>

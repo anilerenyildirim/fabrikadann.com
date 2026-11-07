@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -158,6 +159,8 @@ export const products = pgTable(
     trendyolSalePrice: integer("trendyol_sale_price"),
     // Doluysa site fiyatı = Trendyol satış fiyatı − %indirim (saatlik senkronda yeniden hesaplanır); boşsa fiyat elle
     trendyolDiscount: integer("trendyol_discount"),
+    // N11 satış fiyatı (kuruş); boşsa Ayarlar'daki oranla site fiyatından hesaplanır
+    n11Price: integer("n11_price"),
     // Trendyol'dan aktarılan ürünün productMainId'si (aynı ürün iki kez aktarılmaz)
     trendyolMainId: text("trendyol_main_id"),
     status: productStatus("status").notNull().default("draft"),
@@ -634,3 +637,120 @@ export const notifications = pgTable(
     index("notifications_pending_idx").on(t.createdAt).where(sql`${t.sentAt} is null`),
   ],
 );
+
+// ---------- Pazaryerleri (N11; ileride Hepsiburada) — kanal bazlı ----------
+// Trendyol'un kendi tabloları ayrı kalır. Müşteri kişisel verisi saklanmaz.
+
+export type MarketplaceLine = { stockCode: string; quantity: number; lineId: string; status: string };
+export type MarketplaceAttr = { id: number; name: string; valueId: number | null; customValue: string | null };
+
+// Pazaryerinin en alt düzey kategorileri (eşleştirmede aranır)
+export const marketplaceCategories = pgTable(
+  "marketplace_categories",
+  {
+    channel: text("channel").notNull(),
+    externalId: bigint("external_id", { mode: "number" }).notNull(),
+    path: text("path").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.channel, t.externalId] })],
+);
+
+// Site kategorisi → pazaryeri kategorisi ve kategoriye sabit özellikler (ör. Cinsiyet)
+export const marketplaceCategoryMap = pgTable(
+  "marketplace_category_map",
+  {
+    channel: text("channel").notNull(),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    externalCategoryId: bigint("external_category_id", { mode: "number" }).notNull(),
+    externalPath: text("external_path").notNull(),
+    attributes: jsonb("attributes").$type<MarketplaceAttr[]>().notNull().default([]),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.channel, t.categoryId] })],
+);
+
+export const marketplaceListingStatus = pgEnum("marketplace_listing_status", ["pending", "active", "failed"]);
+
+// Bir numaranın pazaryerindeki karşılığı (stockCode = variants.sku)
+export const marketplaceListings = pgTable(
+  "marketplace_listings",
+  {
+    channel: text("channel").notNull(),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => variants.id, { onDelete: "cascade" }),
+    stockCode: text("stock_code").notNull(),
+    productId: uuid("product_id").notNull(),
+    status: marketplaceListingStatus("status").notNull(),
+    taskId: text("task_id"),
+    error: text("error"),
+    pushedQuantity: integer("pushed_quantity"),
+    pushedPrice: integer("pushed_price"),
+    pushedAt: timestamp("pushed_at", { withTimezone: true }),
+    pushTaskId: text("push_task_id"),
+    pushError: text("push_error"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.channel, t.variantId] }),
+    uniqueIndex("marketplace_listings_stock_code_idx").on(t.channel, t.stockCode),
+  ],
+);
+
+// Sonucu henüz okunmamış pazaryeri görevleri (ürün yükleme, fiyat/stok)
+export const marketplaceTasks = pgTable(
+  "marketplace_tasks",
+  {
+    channel: text("channel").notNull(),
+    taskId: text("task_id").notNull(),
+    kind: text("kind").notNull(),
+    done: boolean("done").notNull().default(false),
+    createdAt: createdAt(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.channel, t.taskId] })],
+);
+
+export const marketplacePackages = pgTable(
+  "marketplace_packages",
+  {
+    channel: text("channel").notNull(),
+    id: text("id").notNull(),
+    orderNumber: text("order_number").notNull(),
+    status: text("status").notNull(),
+    lines: jsonb("lines").$type<MarketplaceLine[]>().notNull(),
+    orderDate: timestamp("order_date", { withTimezone: true }),
+    lastModifiedAt: timestamp("last_modified_at", { withTimezone: true }),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.channel, t.id] }), index("marketplace_packages_order_idx").on(t.channel, t.orderNumber)],
+);
+
+// Bir pazaryeri siparişinin bir stok kodu için stoktan düştüğü adet (Trendyol'daki trendyol_order_stock gibi)
+export const marketplaceOrderStock = pgTable(
+  "marketplace_order_stock",
+  {
+    channel: text("channel").notNull(),
+    orderNumber: text("order_number").notNull(),
+    stockCode: text("stock_code").notNull(),
+    variantId: uuid("variant_id").references(() => variants.id, { onDelete: "set null" }),
+    quantity: integer("quantity").notNull().default(0),
+    deducted: integer("deducted").notNull().default(0),
+    shortfall: integer("shortfall").notNull().default(0),
+    unitCost: integer("unit_cost"),
+    manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "restrict" }),
+    costFixedAt: timestamp("cost_fixed_at", { withTimezone: true }),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.channel, t.orderNumber, t.stockCode] }),
+    index("marketplace_order_stock_variant_idx").on(t.variantId),
+  ],
+);
+
+export const marketplaceSyncState = pgTable("marketplace_sync_state", {
+  channel: text("channel").primaryKey(),
+  state: jsonb("state").notNull(),
+});

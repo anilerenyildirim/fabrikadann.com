@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, TextArea, TextField } from "@/components/ui/form";
+import { Button, SelectField, TextArea, TextField } from "@/components/ui/form";
 import type { FormState } from "@/lib/form";
 import { LooseFieldErrors, StateNotice, useFocusFirstError, type FormAction } from "./forms";
 
@@ -19,7 +19,12 @@ export type SettingsValues = Record<
   | "instagramUrl"
   | "trendyolUrl"
   | "announcement"
-  | "stockAlertThreshold",
+  | "stockAlertThreshold"
+  | "n11PricePercent"
+  | "n11PreparingDay"
+  | "n11VatRate"
+  | "n11ShipmentTemplate"
+  | "n11Brand",
   string
 >;
 
@@ -86,6 +91,29 @@ export function SettingsForm({ action, initial }: { action: FormAction; initial:
           defaultValue={v("stockAlertThreshold")}
           error={e.stockAlertThreshold}
         />
+      </Group>
+
+      <Group
+        title="N11"
+        description="N11'e gönderilen ürünlerde kullanılır. Kargo şablonu, N11 panelinde Hesabım > Teslimat Bilgilerim'de oluşturduğunuz şablonun adıdır; boşken ürün gönderilemez."
+      >
+        <TextField
+          label="N11 fiyatı: site fiyatının üstüne (%)"
+          name="n11PricePercent"
+          inputMode="numeric"
+          defaultValue={v("n11PricePercent")}
+          error={e.n11PricePercent}
+          hint="Üründe elle N11 fiyatı girilmişse o kullanılır."
+        />
+        <TextField label="Hazırlama süresi (gün)" name="n11PreparingDay" inputMode="numeric" defaultValue={v("n11PreparingDay")} error={e.n11PreparingDay} />
+        <SelectField label="KDV oranı" name="n11VatRate" defaultValue={v("n11VatRate")} error={e.n11VatRate}>
+          <option value="0">%0</option>
+          <option value="1">%1</option>
+          <option value="10">%10</option>
+          <option value="20">%20</option>
+        </SelectField>
+        <TextField label="Kargo şablonu adı" name="n11ShipmentTemplate" maxLength={100} defaultValue={v("n11ShipmentTemplate")} error={e.n11ShipmentTemplate} />
+        <TextField label="Marka" name="n11Brand" maxLength={60} defaultValue={v("n11Brand")} error={e.n11Brand} />
       </Group>
 
       <Group
