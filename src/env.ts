@@ -17,6 +17,8 @@ const schema = z.object({
   // N11 (ikisi birlikte ya da hiçbiri)
   N11_API_KEY: z.string().optional(),
   N11_API_SECRET: z.string().optional(),
+  // AI Asistan (Claude API); boşsa asistan kapalı
+  ANTHROPIC_API_KEY: z.string().optional(),
 }).superRefine((e, ctx) => {
   if (!!e.N11_API_KEY?.trim() !== !!e.N11_API_SECRET?.trim()) {
     ctx.addIssue({ code: "custom", path: ["N11_API_KEY"], message: "N11_API_KEY ve N11_API_SECRET birlikte tanımlanmalı" });

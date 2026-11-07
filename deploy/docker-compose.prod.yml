@@ -47,6 +47,8 @@ services:
       # N11 (boşsa kapalı; bkz. docs/CANLIYA-ALMA.md §5e)
       N11_API_KEY: ${N11_API_KEY:-}
       N11_API_SECRET: ${N11_API_SECRET:-}
+      # AI Asistan (Claude API; boşsa kapalı)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Uygulama kısıtlı rolle bağlanır
       DATABASE_URL: postgres://fabrikadann_app:${APP_DB_PASSWORD}@db:5432/fabrikadann
       UPLOAD_DIR: /app/uploads

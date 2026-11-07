@@ -113,6 +113,13 @@
       "when": 1794068517499,
       "tag": "0015_n11_liste_anahtari",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794070074316,
+      "tag": "0016_urun_pazaryeri_ozellikleri",
+      "breakpoints": true
     }
   ]
 }

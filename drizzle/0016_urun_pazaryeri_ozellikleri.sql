@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "marketplace_attrs" jsonb DEFAULT '{}'::jsonb NOT NULL;

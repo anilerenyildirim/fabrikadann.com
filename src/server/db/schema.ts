@@ -162,6 +162,8 @@ export const products = pgTable(
     trendyolDiscount: integer("trendyol_discount"),
     // N11 satış fiyatı (kuruş); boşsa Ayarlar'daki oranla site fiyatından hesaplanır
     n11Price: integer("n11_price"),
+    // Ürüne özel pazaryeri özellikleri (ör. topuk tipi); kategori eşlemesindekilerle birleşir, aynı özellikte bu geçerli
+    marketplaceAttrs: jsonb("marketplace_attrs").$type<{ n11?: MarketplaceAttr[] }>().notNull().default({}),
     // Trendyol'dan aktarılan ürünün productMainId'si (aynı ürün iki kez aktarılmaz)
     trendyolMainId: text("trendyol_main_id"),
     status: productStatus("status").notNull().default("draft"),
