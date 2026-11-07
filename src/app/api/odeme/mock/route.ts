@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { dispatchAfterResponse } from "@/server/notifications/schedule";
 import { completePayment, getPendingPayment } from "@/server/services/payments";
 import { isSameOriginRequest, mockPaymentsAllowed, PAYMENT_TOKEN_RE } from "@/app/(magaza)/odeme/_lib/payment";
 
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
     raw: { source: "mock", result },
   });
 
+  // Yöneticilerin telefonuna, müşteriye yanıt verildikten sonra (push servisi yavaşsa ödeme dönüşü beklemesin)
+  dispatchAfterResponse();
   const number = outcome.orderNumber ?? pending.orderNumber;
   // needs_refund / already_processed: sipariş sayfası güncel durumu kendisi anlatır
   const query =

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { enqueueNotification } from "@/server/notifications/outbox";
 import { dispatchPending, pruneNotifications } from "@/server/notifications/dispatch";
@@ -127,4 +127,25 @@ test("30 günden eski kayıtlar silinir", async () => {
   await note();
   expect(await pruneNotifications(new Date(Date.now() + 31 * 24 * 60 * 60 * 1000))).toBe(1);
   expect(await db.select().from(schema.notifications)).toHaveLength(0);
+});
+
+test("gönderim sürerken bildirim satırı kilitli tutulmaz (gönderim işlem dışında)", async () => {
+  const admin = await makeUser({ role: "admin" });
+  await subscribe(admin.id);
+  await note();
+  let lockFree: boolean | null = null;
+  const probe: PushSender = {
+    send: async () => {
+      lockFree = await db
+        .transaction(async (tx) => {
+          await tx.execute(sql`select id from notifications for update nowait`);
+          return true;
+        })
+        .catch(() => false);
+      return "ok";
+    },
+  };
+  await dispatchPending({ sender: probe });
+  expect(lockFree).toBe(true);
+  expect((await one()).sentAt).not.toBeNull();
 });

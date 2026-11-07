@@ -1,6 +1,5 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { schema, type DbOrTx, type Tx } from "@/server/db";
-import { noteStockDrop } from "@/server/notifications/stock-alert";
 
 const { variants, stockMovements } = schema;
 
@@ -17,14 +16,9 @@ export async function takeStock(tx: Tx, variantId: string, quantity: number, met
     .update(variants)
     .set({ stock: sql`${variants.stock} - ${quantity}` })
     .where(and(eq(variants.id, variantId), gte(variants.stock, quantity)))
-    .returning({ stock: variants.stock });
+    .returning({ id: variants.id });
   if (updated.length === 0) return false;
   await tx.insert(stockMovements).values({ variantId, delta: -quantity, ...meta });
-  // Yalnızca satışlar stok uyarısı üretir (alış iadesi, düzeltme üretmez)
-  if (meta.reason === "order") {
-    const after = updated[0]!.stock;
-    await noteStockDrop(tx, { variantId, before: after + quantity, after, reference: meta.reference ?? variantId, source: "site" });
-  }
   return true;
 }
 

@@ -625,6 +625,8 @@ export const notifications = pgTable(
     createdAt: createdAt(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
+    // Gönderen bu kaydı aldı (kısa işlemle); gönderim işlem dışında. Süresi geçen alım yeniden alınabilir
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     lastError: text("last_error"),
   },
   (t) => [

@@ -84,18 +84,21 @@ test("iade gereken ödeme refund_needed yazar", async () => {
   expect(rows[0]).toMatchObject({ dedupeKey: `site:refund:${order.number}`, title: `İade gerekli: ${order.number}` });
 });
 
-test("sipariş son stoğu bitirince stok tükendi bildirimi", async () => {
+test("stok uyarısı ödenmemiş siparişte değil, ödeme alınınca gider", async () => {
   const { variants } = await makeProduct({ name: "Bot", sizes: [{ size: "40", stock: 1 }] });
   const order = await orderFor({ guestToken: "g2" }, variants[0]!.id);
+  expect((await notes()).filter((n) => n.kind === "stock_out")).toHaveLength(0);
+  const { redirectUrl } = await startPayment(order.id, { appUrl: "http://localhost:3000", ip: "1.2.3.4" });
+  await completePayment({ token: redirectUrl.split("/").at(-1)!, success: true, amount: order.total });
   const rows = (await notes()).filter((n) => n.kind === "stock_out");
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ source: "site", dedupeKey: `stock:${order.number}`, body: "Bot Siyah 40: 0" });
 });
 
-test("bildirim gönderimi hata verse de ödeme tamamlanır", async () => {
+test("ödeme tamamlanırken push gönderimi beklenmez (yanıttan sonra route'ta yapılır)", async () => {
   const dispatch = await import("@/server/notifications/dispatch");
-  const spy = vi.spyOn(dispatch, "dispatchPending").mockRejectedValue(new Error("push servisi kapalı"));
+  const spy = vi.spyOn(dispatch, "dispatchPending");
   const { order, token } = await pending();
   expect((await completePayment({ token, success: true, amount: order.total })).status).toBe("paid");
-  expect(spy).toHaveBeenCalled();
+  expect(spy).not.toHaveBeenCalled();
 });

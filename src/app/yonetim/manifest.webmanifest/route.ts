@@ -8,7 +8,8 @@ const manifest = {
   description: "Sipariş, stok ve mağaza yönetimi",
   lang: "tr",
   start_url: "/yonetim",
-  scope: "/yonetim/",
+  // "/yonetim" hem /yonetim hem /yonetim/... adreslerini kapsar; start_url kapsamın içinde olmalı
+  scope: "/yonetim",
   display: "standalone",
   orientation: "portrait",
   background_color: "#ffffff",

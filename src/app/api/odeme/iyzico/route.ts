@@ -1,5 +1,6 @@
 import { logError } from "@/server/log";
 import { retrieveIyzicoOutcome } from "@/server/payments/iyzico";
+import { dispatchAfterResponse } from "@/server/notifications/schedule";
 import { completePayment, findOrderNumberByProviderSession } from "@/server/services/payments";
 
 /*
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
     // Sonuç henüz kesin değilse (3DS/inceleme) bakım betiğindeki mutabakat tamamlar
     if (!outcome) return redirect(`/siparis/${number}?odeme=bekleniyor`);
     const result = await completePayment(outcome);
+    // Yöneticilerin telefonuna, müşteriye yanıt verildikten sonra (push servisi yavaşsa ödeme dönüşü beklemesin)
+    dispatchAfterResponse();
     const query = result.status === "paid" ? "basarili" : result.status === "already_processed" ? "" : "basarisiz";
     return redirect(`/siparis/${number}${query ? `?odeme=${query}` : ""}`);
   } catch (e) {

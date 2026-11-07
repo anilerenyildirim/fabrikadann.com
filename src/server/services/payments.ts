@@ -2,7 +2,7 @@ import { logError } from "@/server/log";
 import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
 import { db, schema, type Tx } from "@/server/db";
 import { enqueueNotification } from "@/server/notifications/outbox";
-import { dispatchPending } from "@/server/notifications/dispatch";
+import { noteStockDrop } from "@/server/notifications/stock-alert";
 import { randomToken } from "@/server/auth/crypto";
 import { getPaymentProvider } from "@/server/payments";
 import { sendMail } from "@/server/mail";
@@ -10,7 +10,7 @@ import { formatPrice } from "@/lib/money";
 import { audit } from "./audit";
 import { OrderError, tryReviveCancelledOrder } from "./orders";
 
-const { orders, orderItems, payments } = schema;
+const { orders, orderItems, payments, variants } = schema;
 
 export class PaymentError extends Error {}
 
@@ -78,8 +78,6 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
   if ((result.status === "needs_refund" || result.status === "amount_mismatch") && result.orderId) {
     await sendStoreNotification(result.orderId, "refund").catch((e) => logError("Mağaza iade uyarısı gönderilemedi", e));
   }
-  // Yöneticilerin telefonuna (kutuya işlemle birlikte yazıldı); hata ödemeyi etkilemez, bakım yeniden dener
-  await dispatchPending().catch((e) => logError("Anlık bildirim gönderilemedi", e));
   return result;
 }
 
@@ -144,8 +142,17 @@ async function enqueueStoreNotification(tx: Tx, r: { status: string; orderNumber
   if (!r.orderId || !r.orderNumber) return;
   if (r.status === "paid") {
     const [o] = await tx.select({ total: orders.total }).from(orders).where(eq(orders.id, r.orderId));
-    const items = await tx.select({ quantity: orderItems.quantity }).from(orderItems).where(eq(orderItems.orderId, r.orderId));
+    const items = await tx
+      .select({ variantId: orderItems.variantId, quantity: orderItems.quantity, stock: variants.stock })
+      .from(orderItems)
+      .leftJoin(variants, eq(variants.id, orderItems.variantId))
+      .where(eq(orderItems.orderId, r.orderId));
     const count = items.reduce((n, i) => n + i.quantity, 0);
+    // Stok sipariş oluşturulurken ayrıldı; uyarı yalnızca ödeme alınınca (ödenmeyen sipariş bildirim üretmez)
+    for (const i of items) {
+      if (!i.variantId || i.stock === null) continue;
+      await noteStockDrop(tx, { variantId: i.variantId, before: i.stock + i.quantity, after: i.stock, reference: r.orderNumber, source: "site" });
+    }
     await enqueueNotification(tx, {
       kind: "order_new",
       source: "site",

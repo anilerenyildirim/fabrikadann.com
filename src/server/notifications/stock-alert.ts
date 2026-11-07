@@ -33,7 +33,14 @@ export async function noteStockDrop(
   const [existing] = await tx
     .select()
     .from(schema.notifications)
-    .where(and(eq(schema.notifications.dedupeKey, dedupeKey), isNull(schema.notifications.sentAt)))
+    .where(
+      and(
+        eq(schema.notifications.dedupeKey, dedupeKey),
+        isNull(schema.notifications.sentAt),
+        isNull(schema.notifications.claimedAt),
+        eq(schema.notifications.attempts, 0),
+      ),
+    )
     .for("update");
   const previous = ((existing?.data as { lines?: StockLine[] } | null)?.lines ?? []).filter((l) => l.variantId !== line.variantId);
   const lines = [...previous, line];
@@ -41,9 +48,14 @@ export async function noteStockDrop(
 
   if (existing) {
     await tx.update(schema.notifications).set({ ...content, data: { lines } }).where(eq(schema.notifications.id, existing.id));
-  } else {
-    // Aynı referansın bildirimi gönderilmişse (nadir: sonraki çalıştırmada aynı sipariş) yeni anahtar yazılmaz
-    await enqueueNotification(tx, { ...content, source: input.source, dedupeKey, data: { lines } });
+  } else if (!(await enqueueNotification(tx, { ...content, source: input.source, dedupeKey, data: { lines } }))) {
+    // Bu referansın bildirimi gönderildi ya da gönderiliyor (ör. Trendyol eksiği sonradan düşüldü): ayrı bildirim
+    await enqueueNotification(tx, {
+      ...render([line]),
+      source: input.source,
+      dedupeKey: `${dedupeKey}:${line.variantId}:${line.stock}`,
+      data: { lines: [line] },
+    });
   }
 }
 

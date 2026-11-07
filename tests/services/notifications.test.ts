@@ -83,3 +83,13 @@ test("aynı siparişte iki numara tek bildirim; biri tükendiyse tükendi", asyn
   expect(rows[0]!.body).toBe("Bot Siyah 38: 1 · Babet Siyah 37: 0");
   expect(rows[0]!.url).toBe("/yonetim/stok");
 });
+
+test("aynı referansın bildirimi gönderildikten sonraki düşüş ayrı bildirim olur", async () => {
+  const { variants } = await makeProduct({ name: "Bot", sizes: [{ size: "38", stock: 0 }] });
+  await drop(variants[0]!.id, 3, 1, "Trendyol T9");
+  await db.update(schema.notifications).set({ sentAt: new Date() });
+  await drop(variants[0]!.id, 1, 0, "Trendyol T9");
+  const rows = await all();
+  expect(rows).toHaveLength(2);
+  expect(rows.find((r) => r.sentAt === null)).toMatchObject({ kind: "stock_out", dedupeKey: `stock:Trendyol T9:${variants[0]!.id}:0` });
+});

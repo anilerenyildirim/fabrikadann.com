@@ -25,7 +25,8 @@ self.addEventListener("notificationclick", (e) => {
   const url = new URL((e.notification.data && e.notification.data.url) || "/yonetim", self.location.origin).href;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
     const open = list.find((c) => new URL(c.url).pathname.startsWith("/yonetim"));
-    if (open) return open.focus().then((c) => (c || open).navigate(url));
+    // navigate() bu worker'ın denetlemediği pencerede reddedilir: o zaman yeni pencere
+    if (open) return open.focus().then((c) => (c || open).navigate(url)).catch(() => self.clients.openWindow(url));
     return self.clients.openWindow(url);
   }));
 });

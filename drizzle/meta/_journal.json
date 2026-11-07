@@ -92,6 +92,13 @@
       "when": 1794060957171,
       "tag": "0012_bildirimler",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794062129345,
+      "tag": "0013_bildirim_alimi",
+      "breakpoints": true
     }
   ]
 }
