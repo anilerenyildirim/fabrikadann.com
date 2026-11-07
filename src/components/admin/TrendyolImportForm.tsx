@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { Button, Checkbox, FormNotice } from "@/components/ui/form";
+import { Button, Checkbox, ErrorMark, FormNotice } from "@/components/ui/form";
 import { formatPrice } from "@/lib/money";
 
 const MAX_SELECTED = 8;
@@ -124,7 +124,7 @@ export function TrendyolImportForm({ action, candidates }: { action: Action; can
         {candidates.map((c) => {
           const importable = c.newItems > 0 || c.misplacedItems > 0;
           return (
-            <li key={c.productMainId} className="border-b border-rule py-3">
+            <li key={c.productMainId} className={`border-b border-rule px-3 py-3 ${importable ? "bg-caution/5" : ""}`}>
               <div className="flex items-start gap-3">
                 <Checkbox
                   id={`aktar-${c.productMainId}`}
@@ -137,7 +137,15 @@ export function TrendyolImportForm({ action, candidates }: { action: Action; can
                   className="shrink-0"
                 />
                 <div className="min-w-0 flex-1 py-2 text-[0.8125rem]">
-                  <p className="font-medium [overflow-wrap:anywhere]">{c.name}</p>
+                  <p className="flex items-start gap-1.5 font-medium [overflow-wrap:anywhere]">
+                    {importable && (
+                      <>
+                        <ErrorMark />
+                        <span className="sr-only">Sitede eksik: </span>
+                      </>
+                    )}
+                    <span className="min-w-0">{c.name}</span>
+                  </p>
                   <p className="mt-1 text-graphite [overflow-wrap:anywhere]">
                     {c.categoryName ?? "Kategorisiz"} · {c.colorNames.length} renk: {c.colorNames.join(", ") || "renk yok"} · {c.sizes.length} numara
                     {" · "}Model kodu {c.productMainId}
