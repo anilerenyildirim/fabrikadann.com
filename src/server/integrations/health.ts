@@ -1,8 +1,9 @@
 import { sql } from "drizzle-orm";
 import { db, schema } from "@/server/db";
 import { enqueueNotification } from "@/server/notifications/outbox";
-import { getSecret } from "@/server/secrets";
-import { daysUntil, INTEGRATIONS, istanbulDate, recordCheck, type IntegrationId, type Testers } from "@/server/services/admin/integrations";
+import { getSecret, unreadableSecrets } from "@/server/secrets";
+import { logError } from "@/server/log";
+import { daysUntil, INTEGRATIONS, istanbulDate, recordCheck, type IntegrationId, type TestResult, type Testers } from "@/server/services/admin/integrations";
 import { defaultTesters } from "./testers";
 
 const CHECK_EVERY_MS = 60 * 60_000;
@@ -25,7 +26,23 @@ export async function checkIntegrations(opts: { now?: Date; testers?: Testers } 
   const testers = opts.testers ?? defaultTesters;
   const today = istanbulDate(now);
   const rows = await db.select().from(schema.integrations);
+  const unreadable = await unreadableSecrets();
   for (const def of INTEGRATIONS) {
+    try {
+      await checkOne(def, { now, today, testers, previous: rows.find((r) => r.id === def.id), unreadable });
+    } catch (e) {
+      // Bir bağlantının hatası diğerlerini ve son kullanma uyarılarını durdurmasın
+      logError(`[anahtar] ${def.id} kontrol edilemedi`, e instanceof Error ? e.message : "hata");
+    }
+  }
+}
+
+async function checkOne(
+  def: (typeof INTEGRATIONS)[number],
+  o: { now: Date; today: string; testers: Testers; previous: typeof schema.integrations.$inferSelect | undefined; unreadable: string[] },
+) {
+  const { now, today, testers } = o;
+  {
     const values: Record<string, string> = {};
     let configured = true;
     for (const name of def.secrets ?? []) {
@@ -35,9 +52,22 @@ export async function checkIntegrations(opts: { now?: Date; testers?: Testers } 
     }
     for (const name of def.env ?? []) if (!process.env[name]?.trim()) configured = false;
 
+    const lost = (def.secrets ?? []).filter((n) => o.unreadable.includes(n));
+    if (lost.length) {
+      await enqueueNotification(db, {
+        kind: "integration",
+        source: "system",
+        title: `${def.name} anahtarı okunamıyor`,
+        body: "Panelde kayıtlı anahtar çözülemiyor (sunucudaki SECRETS_KEY değişmiş olabilir). Anahtarı Ayarlar > API anahtarları'ndan yeniden girin.",
+        url: URL,
+        dedupeKey: `integration:${def.id}:unreadable:${today}`,
+      });
+    }
     const tester = testers[def.id as IntegrationId];
-    const result = configured && tester ? await tester(values) : configured ? null : { ok: false, message: "Tanımlı değil" };
+    let result = configured && tester ? await tester(values).catch((): TestResult => ({ ok: false, message: "Denenemedi.", transient: true })) : null;
     await recordCheck(def.id, configured ? result : null, now);
+    // Tek seferlik ulaşılamama (ağ kesintisi) bildirilmez; art arda ikincisi bildirilir
+    if (result?.transient && o.previous?.ok !== false) result = null;
     if (configured && result && !result.ok) {
       await enqueueNotification(db, {
         kind: "integration",
@@ -49,11 +79,11 @@ export async function checkIntegrations(opts: { now?: Date; testers?: Testers } 
       });
     }
 
-    const expiresAt = rows.find((r) => r.id === def.id)?.expiresAt;
-    if (!expiresAt) continue;
+    const expiresAt = o.previous?.expiresAt;
+    if (!expiresAt) return;
     const days = daysUntil(expiresAt, now);
     const bucket = expiryBucket(days);
-    if (!bucket) continue;
+    if (!bucket) return;
     await enqueueNotification(db, {
       kind: "integration",
       source: "system",

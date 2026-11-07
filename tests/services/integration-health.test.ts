@@ -57,3 +57,34 @@ test("tanımlı olmayan bağlantı denenmez; kontrol saatte bir çalışır", as
   expect(await checkIntegrationsIfDue({ now: new Date(at("2026-11-08").getTime() + 61 * 60_000), testers })).toBe(true);
   expect(calls).toBe(1);
 });
+
+test("bir bağlantının denemesi hata fırlatsa da diğerleri ve son kullanma kontrolü sürer", async () => {
+  const admin = await makeUser({ role: "admin" });
+  await setIntegrationExpiry({ actorId: admin.id }, "claude", "2026-11-09");
+  const broken: Testers = { ...testers, claude: async () => { throw new Error("beklenmeyen"); } };
+  await checkIntegrations({ now: at("2026-11-08"), testers: broken });
+  expect((await notes()).map((n) => n.title)).toContain("Claude (AI Asistan) anahtarının süresi yarın doluyor");
+});
+
+test("tek seferlik ulaşılamama bildirim göndermez; art arda ikincisi gönderir", async () => {
+  claudeOk = false;
+  const unreachableTesters: Testers = { claude: async () => ({ ok: false, message: "Sağlayıcıya ulaşılamadı", transient: true }) };
+  await checkIntegrations({ now: at("2026-11-08"), testers: unreachableTesters });
+  expect(await notes()).toHaveLength(0);
+  await checkIntegrations({ now: new Date(at("2026-11-08").getTime() + 3600_000), testers: unreachableTesters });
+  expect(await notes()).toHaveLength(1);
+});
+
+test("panelde çözülemeyen anahtar bildirilir", async () => {
+  const { randomBytes } = await import("node:crypto");
+  const { storeSecret } = await import("@/server/secrets");
+  process.env.SECRETS_KEY = randomBytes(32).toString("base64");
+  delete process.env.ANTHROPIC_API_KEY;
+  await storeSecret("ANTHROPIC_API_KEY", "panel-anahtar", null);
+  process.env.SECRETS_KEY = randomBytes(32).toString("base64");
+  clearSecretCache();
+  await checkIntegrations({ now: at("2026-11-08"), testers });
+  const n = (await notes()).find((x) => x.title.includes("okunamıyor"));
+  expect(n?.title).toBe("Claude (AI Asistan) anahtarı okunamıyor");
+  delete process.env.SECRETS_KEY;
+});

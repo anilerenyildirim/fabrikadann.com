@@ -11,10 +11,11 @@ import { checkNowAction, clearKeysAction, saveKeysAction, setExpiryAction } from
 export const metadata: Metadata = { title: "API anahtarları" };
 
 function status(r: IntegrationRow): string {
+  if (r.secrets.some((s) => s.unreadable)) return "Panelde kayıtlı anahtar okunamıyor (sunucudaki SECRETS_KEY değişmiş olabilir). Anahtarı yeniden girin.";
   if (!r.configured) return "Tanımlı değil";
   if (r.ok === true) return "Çalışıyor";
   if (r.ok === false) return `Çalışmıyor: ${r.message ?? ""}`;
-  return "Tanımlı (henüz denenmedi)";
+  return r.editable || r.id === "trendyol" ? "Tanımlı (henüz denenmedi)" : "Tanımlı (otomatik denenmiyor)";
 }
 
 function expiryText(r: IntegrationRow): string | null {
@@ -43,7 +44,7 @@ export default async function ApiKeysPage() {
       )}
       <ul className="max-w-3xl border-t border-ink">
         {rows.map((r) => {
-          const warn = (r.configured && r.ok === false) || (r.daysLeft !== null && r.daysLeft <= 7);
+          const warn = (r.configured && r.ok === false) || (r.daysLeft !== null && r.daysLeft <= 7) || r.secrets.some((s) => s.unreadable);
           const expiry = expiryText(r);
           return (
             <li key={r.id} className={`flex flex-col gap-4 border-b border-rule px-3 py-5 ${warn ? "bg-caution/5" : ""}`}>
@@ -67,7 +68,7 @@ export default async function ApiKeysPage() {
                   <summary className="label flex min-h-11 cursor-pointer items-center">Anahtarı değiştir</summary>
                   <div className="mt-3 flex flex-col gap-4">
                     <IntegrationKeyForm id={r.id} names={r.secrets.map((s) => s.name)} action={saveKeysAction} />
-                    {r.secrets.some((s) => s.source === "panel") && (
+                    {r.secrets.some((s) => s.source === "panel" || s.unreadable) && (
                       <ActionButton
                         action={clearKeysAction}
                         fields={{ id: r.id }}

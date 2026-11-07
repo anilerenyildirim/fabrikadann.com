@@ -30,7 +30,7 @@ test("doğru anahtar denenip kaydedilir; değer günlüğe ve listeye yazılmaz"
   const list = await listIntegrations();
   const claude = list.find((i) => i.id === "claude")!;
   expect(claude).toMatchObject({ configured: true, ok: true, editable: true });
-  expect(claude.secrets).toEqual([{ name: "ANTHROPIC_API_KEY", source: "panel", last4: "1234" }]);
+  expect(claude.secrets).toEqual([{ name: "ANTHROPIC_API_KEY", source: "panel", last4: "1234", unreadable: false }]);
   expect(JSON.stringify(list)).not.toContain("sk-dogru");
   const logs = await db.select().from(schema.auditLog);
   expect(JSON.stringify(logs)).not.toContain("sk-dogru");

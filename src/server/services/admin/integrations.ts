@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/server/db";
-import { deleteSecret, secretSource, storeSecret, type SecretName } from "@/server/secrets";
+import { deleteSecret, secretsEnabled, secretSource, storeSecrets, type SecretName } from "@/server/secrets";
 import { audit } from "../audit";
 import { AdminError, assertAdmin, type AdminContext } from "./context";
 
@@ -26,7 +26,8 @@ export const INTEGRATIONS: Definition[] = [
   { id: "webpush", name: "Telefon bildirimleri", purpose: "Yönetici uygulamasına anlık bildirim", env: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] },
 ];
 
-export type TestResult = { ok: boolean; message: string };
+/** transient: sağlayıcıya ulaşılamadı (anahtar sorunu olmayabilir) */
+export type TestResult = { ok: boolean; message: string; transient?: boolean };
 /** Anahtarı ücretsiz bir istekle dener (sağlayıcıya göre). */
 export type Testers = Partial<Record<IntegrationId, (values: Record<string, string>) => Promise<TestResult>>>;
 
@@ -85,6 +86,7 @@ export async function saveIntegrationKeys(ctx: AdminContext, id: IntegrationId, 
   await assertAdmin(ctx);
   const def = INTEGRATIONS.find((d) => d.id === id);
   if (!def?.secrets) throw new AdminError("Bu bağlantının anahtarı panelden değiştirilemez; sunucu dosyasından değiştirilir.");
+  if (!secretsEnabled()) throw new AdminError("Panelden anahtar kaydı kapalı: sunucuda SECRETS_KEY tanımlı değil.");
   const values: Record<string, string> = {};
   for (const name of def.secrets) {
     const v = secretValue.safeParse(raw[name] ?? "");
@@ -97,7 +99,7 @@ export async function saveIntegrationKeys(ctx: AdminContext, id: IntegrationId, 
     if (!result.ok) throw new AdminError(`Anahtar denendi, çalışmadı: ${result.message} Kaydedilmedi.`);
     await recordCheck(id, result, new Date());
   }
-  for (const [name, value] of Object.entries(values)) await storeSecret(name as SecretName, value, ctx.actorId);
+  await storeSecrets(values as Partial<Record<SecretName, string>>, ctx.actorId);
   await audit({ action: "integration.secret_set", actorId: ctx.actorId, ip: ctx.ip ?? null, target: id, data: { names: Object.keys(values) } });
 }
 

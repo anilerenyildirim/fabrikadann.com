@@ -22,7 +22,7 @@ function reason(text: string): string {
   }
 }
 
-const unreachable: TestResult = { ok: false, message: "Sağlayıcıya ulaşılamadı; biraz sonra yeniden denenecek." };
+const unreachable: TestResult = { ok: false, message: "Sağlayıcıya ulaşılamadı; biraz sonra yeniden denenecek.", transient: true };
 
 export const defaultTesters: Testers = {
   async claude(v) {
@@ -40,13 +40,14 @@ export const defaultTesters: Testers = {
     return { ok: false, message: `N11 ${r.status}: ${reason(r.text) || "beklenmeyen yanıt"}` };
   },
   async trendyol() {
-    const cfg = trendyolConfig();
-    if (!cfg) return { ok: false, message: "Tanımlı değil" };
     try {
+      const cfg = trendyolConfig();
+      if (!cfg) return { ok: false, message: "Tanımlı değil" };
       await new TrendyolClient(cfg).approvedProducts({ page: 0, size: 1 });
       return { ok: true, message: "Çalışıyor" };
     } catch (e) {
-      return { ok: false, message: e instanceof TrendyolError ? e.message.slice(0, 200) : "Trendyol'a ulaşılamadı." };
+      if (e instanceof TrendyolError) return { ok: false, message: e.message.slice(0, 200), transient: !e.status };
+      return { ok: false, message: "Trendyol'a ulaşılamadı.", transient: true };
     }
   },
 };

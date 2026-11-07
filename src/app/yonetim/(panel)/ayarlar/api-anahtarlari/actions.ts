@@ -63,7 +63,11 @@ export async function checkNowAction(_prev: FormState, _form: FormData): Promise
   const ctx = await adminContext();
   const limited = await rateLimit(`api-kontrol:${ctx.actorId}`, 20, 3600);
   if (!limited.ok) return { error: "Çok sık denendi. Biraz sonra yeniden deneyin." };
-  await checkIntegrations();
+  try {
+    await checkIntegrations();
+  } catch (e) {
+    return errorState(e, undefined, "api-kontrol");
+  }
   revalidatePath(PATH);
   return { ok: true, message: "Bağlantılar denendi." };
 }

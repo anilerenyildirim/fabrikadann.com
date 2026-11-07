@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { db, schema } from "@/server/db";
-import { clearSecretCache, decryptSecret, encryptSecret, getSecret, storeSecret, deleteSecret } from "@/server/secrets";
+import { clearSecretCache, decryptSecret, encryptSecret, getSecret, storeSecret, deleteSecret, unreadableSecrets } from "@/server/secrets";
 import { resetDb } from "../helpers/db";
 
 const KEY = randomBytes(32).toString("base64");
@@ -16,12 +16,12 @@ afterEach(() => {
 });
 
 test("şifreleme: aynı değer döner, her seferinde farklı metin, bozuk metin hata", () => {
-  const a = encryptSecret("sk-ant-gizli-1234");
-  const b = encryptSecret("sk-ant-gizli-1234");
+  const a = encryptSecret("ANTHROPIC_API_KEY", "sk-ant-gizli-1234");
+  const b = encryptSecret("ANTHROPIC_API_KEY", "sk-ant-gizli-1234");
   expect(a).not.toBe(b);
   expect(a).not.toContain("gizli");
-  expect(decryptSecret(a)).toBe("sk-ant-gizli-1234");
-  expect(() => decryptSecret(a.slice(0, -4) + "AAAA")).toThrow();
+  expect(decryptSecret("ANTHROPIC_API_KEY", a)).toBe("sk-ant-gizli-1234");
+  expect(() => decryptSecret("ANTHROPIC_API_KEY", a.slice(0, -4) + "AAAA")).toThrow();
 });
 
 test("SECRETS_KEY yoksa ya da hatalıysa kayıt reddedilir", async () => {
@@ -49,4 +49,20 @@ test("ana anahtar değişip kayıt çözülemezse ortam değerine düşer, çök
   process.env.SECRETS_KEY = randomBytes(32).toString("base64");
   clearSecretCache();
   expect(await getSecret("ANTHROPIC_API_KEY")).toBe("env-anahtar");
+});
+
+test("şifreli kayıt başka bir ada taşınırsa çözülmez (kayıt adına bağlı)", async () => {
+  await storeSecret("N11_API_KEY", "anahtar-1111", null);
+  const [row] = await db.select().from(schema.integrationSecrets);
+  await db.insert(schema.integrationSecrets).values({ name: "N11_API_SECRET", ciphertext: row!.ciphertext, last4: "1111" });
+  clearSecretCache();
+  expect(await getSecret("N11_API_SECRET")).toBeNull();
+  expect(await getSecret("N11_API_KEY")).toBe("anahtar-1111");
+});
+
+test("çözülemeyen panel kaydı ayrıca bildirilir", async () => {
+  await storeSecret("ANTHROPIC_API_KEY", "panel-anahtar", null);
+  process.env.SECRETS_KEY = randomBytes(32).toString("base64");
+  clearSecretCache();
+  expect(await unreadableSecrets()).toEqual(["ANTHROPIC_API_KEY"]);
 });

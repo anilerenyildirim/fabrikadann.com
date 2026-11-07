@@ -29,7 +29,7 @@ Ayakkabı e-ticaret sitesi. Spec: `docs/superpowers/specs/2026-10-25-magaza-v1-d
 
 ## Kurallar
 
-- **Renk:** yalnızca Tailwind tema renkleri `ink` (#000), `paper` (#fff), `graphite`, `ash`, `rule`, `fog`, `night`. Başka renk yok — hata durumları dahil (hata: siyah metin + `ErrorMark` simgesi + kalın alt çizgi). İstisnalar: `public/brand/iyzico/` altındaki resmî iyzico/kart logoları (ödeme kuruluşu şartı; renkleri değiştirilmez) ve yönetim panelinde "sitede eksik" satırları için `caution` rengi, yalnızca `bg-caution/5` hafif arka plan olarak (kullanıcı isteği, 07.11.2026; vitrinde kullanılmaz).
+- **Renk:** yalnızca Tailwind tema renkleri `ink` (#000), `paper` (#fff), `graphite`, `ash`, `rule`, `fog`, `night`. Başka renk yok — hata durumları dahil (hata: siyah metin + `ErrorMark` simgesi + kalın alt çizgi). İstisnalar: `public/brand/iyzico/` altındaki resmî iyzico/kart logoları (ödeme kuruluşu şartı; renkleri değiştirilmez) ve yönetim panelinde dikkat gerektiren satırlar (sitede eksik ürün, eşlenmemiş kategori, çalışmayan ya da süresi dolan API anahtarı) için `caution` rengi, yalnızca `bg-caution/5` hafif arka plan olarak (kullanıcı isteği, 07.11.2026: "sadece yönetim paneli uyarısı için"; vitrinde kullanılmaz).
 - **Tipografi:** Archivo. Başlık/etiket: `.wide` (geniş, aralıklı büyük harf) ya da `.label` (küçük büyük harf). Fiyatlar `.tabular`. Metin cümle düzeninde.
 - **Bileşenler:** `@/components/ui/form` (Button, ButtonLink, TextField, SelectField, TextArea, Checkbox, FormNotice), `ProductImage`, `Price`, `AddressFields`, `@/components/brand/Logo`.
 - **Dokunma hedefleri:** tıklanabilir her şey en az 44px yüksek (`min-h-11`). 360px genişlikte yatay kaydırma olmamalı.
