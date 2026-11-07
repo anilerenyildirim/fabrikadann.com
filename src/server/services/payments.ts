@@ -2,6 +2,7 @@ import { logError } from "@/server/log";
 import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
 import { db, schema, type Tx } from "@/server/db";
 import { enqueueNotification } from "@/server/notifications/outbox";
+import { dispatchPending } from "@/server/notifications/dispatch";
 import { randomToken } from "@/server/auth/crypto";
 import { getPaymentProvider } from "@/server/payments";
 import { sendMail } from "@/server/mail";
@@ -77,6 +78,8 @@ export async function completePayment(outcome: PaymentOutcome): Promise<{ status
   if ((result.status === "needs_refund" || result.status === "amount_mismatch") && result.orderId) {
     await sendStoreNotification(result.orderId, "refund").catch((e) => logError("Mağaza iade uyarısı gönderilemedi", e));
   }
+  // Yöneticilerin telefonuna (kutuya işlemle birlikte yazıldı); hata ödemeyi etkilemez, bakım yeniden dener
+  await dispatchPending().catch((e) => logError("Anlık bildirim gönderilemedi", e));
   return result;
 }
 

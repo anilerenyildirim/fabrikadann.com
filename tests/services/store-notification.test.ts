@@ -91,3 +91,11 @@ test("sipariş son stoğu bitirince stok tükendi bildirimi", async () => {
   expect(rows).toHaveLength(1);
   expect(rows[0]).toMatchObject({ source: "site", dedupeKey: `stock:${order.number}`, body: "Bot Siyah 40: 0" });
 });
+
+test("bildirim gönderimi hata verse de ödeme tamamlanır", async () => {
+  const dispatch = await import("@/server/notifications/dispatch");
+  const spy = vi.spyOn(dispatch, "dispatchPending").mockRejectedValue(new Error("push servisi kapalı"));
+  const { order, token } = await pending();
+  expect((await completePayment({ token, success: true, amount: order.total })).status).toBe("paid");
+  expect(spy).toHaveBeenCalled();
+});

@@ -9,6 +9,7 @@ import { retrieveIyzicoOutcome } from "@/server/payments/iyzico";
 import { pruneSessions } from "@/server/auth/session";
 import { pruneRateLimits } from "@/server/auth/rate-limit";
 import { applyRetention } from "@/server/services/retention";
+import { dispatchPending, pruneNotifications } from "@/server/notifications/dispatch";
 
 let reconciled = 0;
 if (process.env.PAYMENT_PROVIDER === "iyzico") {
@@ -20,8 +21,14 @@ await pruneSessions();
 await pruneRateLimits();
 // KVKK: saklama süresi dolan kişisel veriler (aydınlatma metnindeki sürelerle)
 const retention = await applyRetention();
+// Kaçan anlık bildirimler (ör. push servisi o an yanıt vermedi) en geç 5 dakikada gider
+const pushed = await dispatchPending().catch((e) => {
+  console.error("[bakım] bildirim gönderilemedi:", e instanceof Error ? e.message : e);
+  return null;
+});
+const prunedNotifications = await pruneNotifications();
 console.log(
   `[bakım] ${new Date().toISOString()} mutabakat: ${reconciled}, süresi dolan sipariş: ${released}, ` +
-    `imha: ${JSON.stringify(retention)}`,
+    `imha: ${JSON.stringify(retention)}, bildirim: ${JSON.stringify(pushed)}, eski bildirim: ${prunedNotifications}`,
 );
 await pool.end();

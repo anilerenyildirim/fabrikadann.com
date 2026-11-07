@@ -6,6 +6,7 @@ import { pool } from "@/server/db";
 import { describeError } from "@/server/log";
 import { runTrendyolSync } from "@/server/services/trendyol";
 import { TrendyolClient, trendyolConfig } from "@/server/trendyol/client";
+import { dispatchPending } from "@/server/notifications/dispatch";
 
 let exitCode = 0;
 try {
@@ -20,6 +21,8 @@ try {
         : "[trendyol] önceki çalıştırma sürüyor; atlandı",
     );
     if (summary?.pushErrors.length) exitCode = 1;
+    // Yeni Trendyol siparişleri ve stok uyarıları yöneticilerin telefonuna
+    await dispatchPending().catch((e) => console.error("[trendyol] bildirim gönderilemedi:", describeError(e).split("\n")[0]));
   }
 } catch (e) {
   console.error("[trendyol] senkron başarısız:", describeError(e).split("\n")[0]);
