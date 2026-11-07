@@ -36,6 +36,11 @@ const settingsForm = z.object({
   instagramUrl: text(300),
   trendyolUrl: text(300),
   announcement: text(200),
+  stockAlertThreshold: z.coerce
+    .number({ message: "Stok uyarı eşiğini 0 ile 100 arasında bir tam sayı olarak yazın." })
+    .int("Stok uyarı eşiğini 0 ile 100 arasında bir tam sayı olarak yazın.")
+    .min(0, "Stok uyarı eşiğini 0 ile 100 arasında bir tam sayı olarak yazın.")
+    .max(100, "Stok uyarı eşiğini 0 ile 100 arasında bir tam sayı olarak yazın."),
 });
 
 export async function saveSettingsAction(_prev: FormState, form: FormData): Promise<FormState> {

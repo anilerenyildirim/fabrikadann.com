@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { db, schema } from "@/server/db";
+import { db, schema, type DbOrTx } from "@/server/db";
 
 export const settingsSchema = z.object({
   shippingFee: z.number().int().min(0),
@@ -17,6 +17,8 @@ export const settingsSchema = z.object({
   instagramUrl: z.union([z.literal(""), z.string().max(300).url().startsWith("https://")]),
   trendyolUrl: z.union([z.literal(""), z.string().max(300).url().startsWith("https://")]),
   announcement: z.string().max(200),
+  // Satışla stok bu adede ya da altına inince yöneticilere bildirim (0: yalnızca tükenince)
+  stockAlertThreshold: z.number().int().min(0).max(100),
 });
 
 export type Settings = z.infer<typeof settingsSchema>;
@@ -35,12 +37,13 @@ export const defaultSettings: Settings = {
   instagramUrl: "https://instagram.com/fabrikadann",
   trendyolUrl: "",
   announcement: "",
+  stockAlertThreshold: 1,
 };
 
 const KEY = "store";
 
-export async function getSettings(): Promise<Settings> {
-  const row = await db.query.settings.findFirst({ where: eq(schema.settings.key, KEY) });
+export async function getSettings(conn: DbOrTx = db): Promise<Settings> {
+  const row = await conn.query.settings.findFirst({ where: eq(schema.settings.key, KEY) });
   const parsed = settingsSchema.partial().safeParse(row?.value ?? {});
   return { ...defaultSettings, ...(parsed.success ? parsed.data : {}) };
 }

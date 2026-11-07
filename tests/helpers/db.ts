@@ -6,7 +6,8 @@ export async function resetDb() {
     TRUNCATE users, sessions, password_reset_tokens, email_verification_tokens, rate_limits, addresses, categories, products,
       product_colors, product_images, variants, stock_movements, carts, cart_items, orders,
       order_items, payments, audit_log, settings, trendyol_packages, trendyol_order_stock, trendyol_stock_push,
-      manufacturers, product_supply, order_item_costs, purchases, purchase_items, ledger_entries
+      manufacturers, product_supply, order_item_costs, purchases, purchase_items, ledger_entries,
+      push_subscriptions, notifications
     RESTART IDENTITY CASCADE
   `);
 }

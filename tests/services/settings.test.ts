@@ -13,3 +13,8 @@ test("ayar yoksa varsayılanlar döner, güncelleme kalıcıdır", async () => {
 test("geçersiz ayar reddedilir", async () => {
   await expect(updateSettings({ shippingFee: -1 })).rejects.toThrow();
 });
+
+test("stok uyarı eşiği varsayılanı 1, 101 reddedilir", async () => {
+  expect((await getSettings()).stockAlertThreshold).toBe(1);
+  await expect(updateSettings({ stockAlertThreshold: 101 })).rejects.toThrow();
+});

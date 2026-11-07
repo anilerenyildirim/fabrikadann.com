@@ -32,6 +32,7 @@ export default async function SettingsPage() {
           instagramUrl: s.instagramUrl,
           trendyolUrl: s.trendyolUrl,
           announcement: s.announcement,
+          stockAlertThreshold: String(s.stockAlertThreshold),
         }}
       />
     </>

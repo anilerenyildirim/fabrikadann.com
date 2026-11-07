@@ -588,3 +588,47 @@ export const settings = pgTable(
   },
   (t) => [primaryKey({ columns: [t.key] })],
 );
+
+// ---------- Bildirimler (yönetici telefonları, Web Push) ----------
+
+export const notificationKind = pgEnum("notification_kind", ["order_new", "refund_needed", "stock_low", "stock_out", "test"]);
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    label: text("label").notNull(),
+    createdAt: createdAt(),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint), index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+// Bildirim kutusu: olay kendi işlemiyle birlikte yazılır, sonra gönderilir. Kaynak: site, trendyol (ileride n11, hepsiburada)
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: id(),
+    kind: notificationKind("kind").notNull(),
+    source: text("source").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    url: text("url").notNull(),
+    dedupeKey: text("dedupe_key").notNull(),
+    data: jsonb("data"),
+    createdAt: createdAt(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+  },
+  (t) => [
+    uniqueIndex("notifications_dedupe_idx").on(t.dedupeKey),
+    index("notifications_pending_idx").on(t.createdAt).where(sql`${t.sentAt} is null`),
+  ],
+);

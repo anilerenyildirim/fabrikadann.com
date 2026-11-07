@@ -18,7 +18,8 @@ export type SettingsValues = Record<
   | "kepAddress"
   | "instagramUrl"
   | "trendyolUrl"
-  | "announcement",
+  | "announcement"
+  | "stockAlertThreshold",
   string
 >;
 
@@ -70,6 +71,20 @@ export function SettingsForm({ action, initial }: { action: FormAction; initial:
           defaultValue={v("announcement")}
           error={e.announcement}
           className="sm:col-span-2"
+        />
+      </Group>
+
+      <Group
+        title="Bildirimler"
+        description="Satışla bir numaranın stoğu bu adede ya da altına inince ve tükenince yöneticilerin telefonuna bildirim gider. 0 yazarsanız yalnızca tükenince."
+      >
+        <TextField
+          label="Stok uyarı eşiği (adet)"
+          name="stockAlertThreshold"
+          inputMode="numeric"
+          placeholder="1"
+          defaultValue={v("stockAlertThreshold")}
+          error={e.stockAlertThreshold}
         />
       </Group>
 

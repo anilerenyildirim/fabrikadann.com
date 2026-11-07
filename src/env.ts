@@ -10,6 +10,15 @@ const schema = z.object({
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default("fabrikadann <info@fabrikadann.com>"),
   ORDER_NOTIFY_EMAIL: z.string().optional(),
+  // Web Push (yönetici bildirimleri): üçü birlikte tanımlanır ya da hiçbiri
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
+}).superRefine((e, ctx) => {
+  const set = [e.VAPID_PUBLIC_KEY, e.VAPID_PRIVATE_KEY, e.VAPID_SUBJECT].filter((v) => v?.trim()).length;
+  if (set !== 0 && set !== 3) {
+    ctx.addIssue({ code: "custom", path: ["VAPID_PUBLIC_KEY"], message: "VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY ve VAPID_SUBJECT birlikte tanımlanmalı" });
+  }
 });
 
 export type Env = z.infer<typeof schema>;

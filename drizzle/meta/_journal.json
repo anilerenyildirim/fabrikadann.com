@@ -85,6 +85,13 @@
       "when": 1793987791558,
       "tag": "0011_renk_trendyol_anahtari",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794060957171,
+      "tag": "0012_bildirimler",
+      "breakpoints": true
     }
   ]
 }
