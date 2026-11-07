@@ -53,7 +53,13 @@ TRENDYOL_ENV=prod
 VAPID_PUBLIC_KEY=
 VAPID_PRIVATE_KEY=
 VAPID_SUBJECT=mailto:info@fabrikadann.com
+# N11 (isteğe bağlı; bkz. §5e). N11 satıcı paneli > Hesabım > API Hesapları
+N11_API_KEY=
+N11_API_SECRET=
 ```
+
+Yeni bir ortam değişkeni eklerken `deploy/docker-compose.prod.yml` içindeki `app.environment` listesine de ekleyin;
+uygulama konteyneri yalnızca orada adı geçen değişkenleri görür.
 
 Notlar:
 - `SESSION_SECRET` aynı zamanda yönetici TOTP anahtarlarını şifreler. Değiştirirseniz her yönetici için
@@ -160,6 +166,30 @@ Ayarlar'daki eşiğe inmesi ya da tükenmesi. Bildirimde müşteri bilgisi yer a
 - Gönderim: site siparişinde hemen; Trendyol senkronunun sonunda; kaçanlar 5 dakikalık bakımda yeniden denenir
   (en fazla 5 kez, 24 saatten eskiler gönderilmez). Yalnızca rolü yönetici olanlara gider; panelden çıkış o cihazın
   aboneliğini siler.
+
+## 5e. N11
+
+Yön site → N11: ürünler siteden N11'e yüklenir, stok sitede tutulur (Trendyol'daki gibi ortak stok).
+
+1. `.env.production`'a `N11_API_KEY` ve `N11_API_SECRET` (§3), uygulamayı yeniden başlatın.
+2. N11 panelinde Hesabım > Teslimat Bilgilerim'de bir kargo şablonu oluşturun; adını panelde Ayarlar > N11'e yazın
+   (fiyat oranı varsayılan %33, hazırlama 2 gün, KDV %10, marka "Fabrikadann").
+3. Kategoriler > N11 eşleştirme: "Kategorileri N11'den al", sonra her site kategorisini N11 kategorisine eşleyin
+   (zorunlu sabit özellikler, ör. Cinsiyet).
+4. Ürünler > N11'e gönder: yayındaki ürünleri seçip gönderin. N11 yüklemeyi kuyruğa alır; sonuç birkaç dakika içinde
+   senkronda okunur (satıştaki / reddedilen + neden). Görseller `/medya/...jpg` adresinden JPEG olarak alınır.
+5. Zamanlanmış görev (2 dakikada bir):
+
+```cron
+*/2 * * * * root cd /srv/fabrikadann && docker compose -f deploy/docker-compose.prod.yml --env-file .env.production run --rm app npx tsx scripts/marketplace-sync.ts >> /var/log/fabrikadann-n11.log 2>&1
+```
+
+Senkron: N11 siparişlerini stoktan düşer (stok kodu = sitedeki SKU), iptalleri geri koyar, stoğu tam düşülen yeni
+siparişleri N11'de onaylar (Created → Picking; stok yetmeyen onaylanmaz, bildirim gider), N11'deki numaraların
+stoğunu ve N11 fiyatını değiştiğinde gönderir; silinen numaraya ya da arşivlenen ürüne 0 gönderir. İlk çalıştırma
+son 30 günün siparişlerini stoğa dokunmadan kaydeder. N11 iadeleri stoğa otomatik dönmez (ürün kontrol edilip elle
+eklenir). Ürün adı, görsel ve özellik değişiklikleri N11 API'siyle güncellenemez; N11 panelinden yapılır.
+Durum: Stok sayfasının altındaki "N11 senkronu" bölümü.
 
 ### Trendyol'dan ürün aktarma
 
