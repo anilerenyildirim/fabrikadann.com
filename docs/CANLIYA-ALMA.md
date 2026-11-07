@@ -48,6 +48,11 @@ TRENDYOL_SELLER_ID=
 TRENDYOL_API_KEY=
 TRENDYOL_API_SECRET=
 TRENDYOL_ENV=prod
+# Yöneticilere anlık bildirim (Web Push; bkz. §5d). Üçü birlikte ya da hiçbiri.
+# Üretim: docker run --rm fabrikadann:latest npx web-push generate-vapid-keys
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:info@fabrikadann.com
 ```
 
 Notlar:
@@ -115,7 +120,9 @@ Kurulum:
 
 1. Satıcı panelinde Hesap Bilgilerim → Entegrasyon Bilgileri'nden Satıcı ID, API Key ve API Secret'ı alıp
    `.env.production`'a yazın (bkz. §3), uygulamayı yeniden başlatın.
-2. **Açmadan önce** panelde her numaranın barkodunu girin ve sitedeki stoğu doğru yapın: satılabilir stok =
+2. **Açmadan önce** `npm run trendyol:compare` ile (sunucuda: `docker compose ... run --rm app npx tsx scripts/trendyol-stock-compare.ts`)
+   site ve Trendyol stoklarını karşılaştırın; betik yalnızca okur, farklı olanları listeler.
+   Panelde her numaranın barkodunu girin ve sitedeki stoğu doğru yapın: satılabilir stok =
    depodaki adet − iki kanalda henüz kargolanmamış siparişler. Senkronun ilk çalıştığı andan önce verilmiş Trendyol
    siparişleri stok değiştirmeden "zaten düşülmüş" kabul edilir (son 13 günde değişmiş olanlar sonradan iptal
    edilirse adet stoğa döner; daha eskiler için iptal stoğa elle eklenir);
@@ -139,6 +146,20 @@ kargolanmamış adetler sayımdan düşülür, kargolanmış ama henüz düşül
 
 Önce test ortamında deneyin: `TRENDYOL_ENV=stage` ve test hesabı bilgileri (test ortamı için sunucunun
 çıkış IP'si Trendyol çağrı merkezine tanıtılmalı). Denenecekler §8'de.
+
+## 5d. Yönetici telefon bildirimleri (PWA)
+
+Yönetim paneli telefona "Fabrikadann Yönetim" uygulaması olarak eklenir ve şu olaylarda anlık bildirim gelir:
+sitede yeni sipariş, iade gerektiren ödeme, Trendyol'da yeni sipariş (senkron açıkken), satışla stoğun
+Ayarlar'daki eşiğe inmesi ya da tükenmesi. Bildirimde müşteri bilgisi yer almaz; e-posta bildirimleri aynen sürer.
+
+- Kurulum: `.env.production`'a VAPID anahtarları (§3), uygulamayı yeniden başlatın.
+- Her yönetici kendi telefonunda: Panel → Ayarlar → **Telefon bildirimleri**. iPhone'da önce Safari'de
+  Paylaş → Ana Ekrana Ekle, uygulamayı ana ekrandan açıp bildirimleri açın (iOS 16.4+). Android'de Chrome yeterli.
+  "Deneme bildirimi gönder" ile doğrulayın.
+- Gönderim: site siparişinde hemen; Trendyol senkronunun sonunda; kaçanlar 5 dakikalık bakımda yeniden denenir
+  (en fazla 5 kez, 24 saatten eskiler gönderilmez). Yalnızca rolü yönetici olanlara gider; panelden çıkış o cihazın
+  aboneliğini siler.
 
 ### Trendyol'dan ürün aktarma
 

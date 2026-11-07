@@ -18,6 +18,7 @@ Ayakkabı e-ticaret sitesi. Spec: `docs/superpowers/specs/2026-10-25-magaza-v1-d
 - `src/server/auth/*` — oturum (`current.ts`: `getCurrentUser`, `requireUser`, `requireAdmin`, `getClientIp`), parola, hız sınırı, TOTP.
 - `src/server/cart-owner.ts` — sepet sahibi (kullanıcı ya da misafir çerezi).
 - `src/server/services/admin/{manufacturers,purchases,ledger,accounting}.ts` — üretici, alış/iade fişi, gelir-gider, cari ve dönem özeti. Alış fiyatı ve üretici `product_supply`, satıştaki maliyet `order_item_costs` tablosunda; vitrin sorguları bunlara dokunmaz. Üretim barkodu (`variants.production_barcode`, EAN-13, `29…`) veritabanı fonksiyonuyla üretilir.
+- `src/server/notifications/*` — yönetici bildirimleri: olaylar `enqueueNotification` ile kendi işlemleri içinde `notifications` kutusuna yazılır (dedupe anahtarı), `dispatchPending` Web Push (VAPID) ile admin aboneliklerine gönderir. Yeni kaynak (N11, Hepsiburada) aynı kutuya `source` ile yazar. PWA: `/yonetim/manifest.webmanifest`, `/yonetim/sw.js` (yalnızca `/yonetim/` kapsamı, önbellek yok).
 - `src/server/payments` — ödeme sağlayıcı arayüzü; şu an yalnızca test ödemesi (`mock`). iyzico adaptörü sonra eklenecek.
 - `src/server/storage/images.ts` — ürün görselleri (sharp ile yeniden kodlanır, `/medya/...` route'undan sunulur).
 - `src/app/(magaza)` vitrin, `src/app/yonetim` yönetim paneli.
