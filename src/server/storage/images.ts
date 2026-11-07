@@ -24,6 +24,12 @@ function uploadRoot(): string {
   return path.resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR || "./uploads");
 }
 
+const JPEG_WIDTH = 1200;
+
+function jpegFileFor(id: string): string {
+  return path.join(uploadRoot(), "p", `${id}-${JPEG_WIDTH}.jpg`);
+}
+
 function fileFor(id: string, width: number): string {
   return path.join(uploadRoot(), "p", `${id}-${width}.webp`);
 }
@@ -79,7 +85,7 @@ export async function storeProductImage(input: Buffer): Promise<StoredImage> {
 export async function deleteProductImage(key: string): Promise<void> {
   if (!KEY_RE.test(key)) return;
   const id = key.slice(2);
-  await Promise.all(IMAGE_WIDTHS.map((w) => rm(fileFor(id, w), { force: true })));
+  await Promise.all([...IMAGE_WIDTHS.map((w) => rm(fileFor(id, w), { force: true })), rm(jpegFileFor(id), { force: true })]);
 }
 
 /**
@@ -96,7 +102,16 @@ export async function readMedia(relative: string): Promise<{ body: Buffer; conte
     return null;
   }
   if (m[3] === "webp") return { body: file, contentType: "image/webp" };
+  // JPEG yalnızca pazaryerlerinin aldığı boyutta; ilk istekte üretilip diske yazılır (sonraki istekler dönüştürmez)
+  if (m[2] !== String(JPEG_WIDTH)) return null;
+  const jpegPath = jpegFileFor(m[1]!);
+  try {
+    return { body: await readFile(jpegPath), contentType: "image/jpeg" };
+  } catch {
+    // henüz üretilmedi
+  }
   const body = await sharp(file).flatten({ background: "#ffffff" }).jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+  await writeFile(jpegPath, body).catch(() => {});
   return { body, contentType: "image/jpeg" };
 }
 
@@ -105,7 +120,7 @@ export function mediaUrl(key: string, width: ImageWidth): string {
 }
 
 /** Pazaryerlerine gönderilen JPEG adresi (göreli; APP_URL ile birleştirilir). */
-export function mediaJpegUrl(key: string, width: ImageWidth): string {
+export function mediaJpegUrl(key: string, width: typeof JPEG_WIDTH = JPEG_WIDTH): string {
   return `/medya/${key}-${width}.jpg`;
 }
 

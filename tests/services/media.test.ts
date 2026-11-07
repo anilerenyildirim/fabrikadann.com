@@ -1,9 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { mediaJpegUrl, readMedia, storeProductImage } from "@/server/storage/images";
+import { deleteProductImage, mediaJpegUrl, readMedia, storeProductImage } from "@/server/storage/images";
 
 let dir: string;
 beforeAll(async () => {
@@ -26,4 +26,14 @@ test("webp ve jpg adresleri aynı görseli doğru türde verir; bilinmeyen uzant
   expect(await readMedia(`${key}-800.png`)).toBeNull();
   expect(await readMedia(`../${key}-800.jpg`)).toBeNull();
   expect(mediaJpegUrl(key, 1200)).toBe(`/medya/${key}-1200.jpg`);
+});
+
+test("JPEG yalnız 1200 genişlikte ve ilk istekten sonra diskten verilir", async () => {
+  const { key } = await storeProductImage(await png());
+  expect(await readMedia(`${key}-800.jpg`)).toBeNull();
+  await readMedia(`${key}-1200.jpg`);
+  const cached = path.join(dir, `${key}-1200.jpg`);
+  expect((await stat(cached)).size).toBeGreaterThan(0);
+  await deleteProductImage(key);
+  await expect(stat(cached)).rejects.toThrow();
 });

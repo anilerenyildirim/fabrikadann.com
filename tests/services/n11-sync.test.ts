@@ -197,3 +197,33 @@ test("aynı anda iki çalıştırmadan biri atlanır", async () => {
   const [a, b] = await Promise.all([run(), run(0)]);
   expect([a, b].filter((x) => x === null)).toHaveLength(1);
 });
+
+test("SKU'su sonradan değişen numaranın eski stok kodlu siparişi yine o numaradan düşer", async () => {
+  const { v } = await listed(5);
+  await run();
+  const oldCode = v.sku;
+  await db.update(schema.variants).set({ sku: "YENI-SKU-1" }).where(eq(schema.variants.id, v.id));
+  fake.packages = [pkg("N8", "Created", [{ stockCode: oldCode, quantity: 1 }])];
+  await run();
+  expect(await stockOf(v.id)).toBe(4);
+  expect((await getN11Status()).unmatched).toEqual([]);
+});
+
+test("sonucu alınamayan yükleme görevi numaraları bırakmaz: stok gönderilmeye devam eder", async () => {
+  const { v } = await listed(3, { status: "pending" });
+  await db.update(schema.marketplaceListings).set({ taskId: "88", pushedQuantity: null });
+  await db.insert(schema.marketplaceTasks).values({ channel: "n11", taskId: "88", kind: "create", createdAt: new Date(clock - 25 * 3600_000) });
+  await run();
+  const [row] = await db.select().from(schema.marketplaceListings);
+  expect(row!.status).toBe("active");
+  expect(row!.error).toMatch(/sonucu alınamadı/);
+  expect(fake.pushes.at(-1)).toEqual([{ stockCode: v.sku, quantity: 3, price: 133000 }]);
+});
+
+test("ilk çalıştırmada görülen sipariş, tarihi ileri görünse de (saat farkı) düşülmez", async () => {
+  const { v } = await listed(5);
+  fake.packages = [{ ...pkg("N9", "Created", [{ stockCode: v.sku, quantity: 1 }]), orderDate: new Date(clock + 3 * 3600_000 + 120_000) }];
+  await run();
+  expect(await stockOf(v.id)).toBe(5);
+  expect(await notes()).toHaveLength(0);
+});

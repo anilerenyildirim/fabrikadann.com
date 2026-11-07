@@ -200,7 +200,14 @@ function wantedByStockCode(packages: { status: string; lines: MarketplaceLine[] 
   return wanted;
 }
 
+/** Stok kodunun numarası: önce N11 kaydı (SKU sonradan değişmiş olabilir), yoksa sitedeki SKU. */
 async function matchVariant(tx: Tx, stockCode: string): Promise<string | null> {
+  const [l] = await tx
+    .select({ id: marketplaceListings.variantId })
+    .from(marketplaceListings)
+    .where(and(eq(marketplaceListings.channel, CHANNEL), eq(marketplaceListings.stockCode, stockCode)))
+    .limit(1);
+  if (l?.id) return l.id;
   const [v] = await tx.select({ id: variants.id }).from(variants).where(eq(variants.sku, stockCode)).limit(1);
   return v?.id ?? null;
 }
@@ -237,7 +244,8 @@ async function applyOrder(orderNumber: string, baselineAt: number | undefined, b
     const wanted = wantedByStockCode(packages);
     const dates = packages.map((p) => p.orderDate?.getTime()).filter((d): d is number => d !== undefined);
     const orderedAt = dates.length ? Math.min(...dates) : undefined;
-    const preexisting = orderedAt !== undefined && baselineAt !== undefined ? orderedAt < baselineAt : baselineRun;
+    // İlk çalıştırmada görülen her sipariş eski sayılır (N11 tarihleri saat farkıyla gelebilir)
+    const preexisting = baselineRun || (orderedAt !== undefined && baselineAt !== undefined ? orderedAt < baselineAt : false);
 
     const where = and(eq(marketplaceOrderStock.channel, CHANNEL), eq(marketplaceOrderStock.orderNumber, orderNumber));
     // Kilit sırası: önce numaralar (kimlik sırasıyla), sonra sipariş kayıtları — ödeme akışıyla aynı
@@ -393,6 +401,8 @@ async function checkTasks(client: N11SyncApi, now: Date): Promise<number> {
     checked++;
     const results = new Map((details?.skus ?? []).map((s) => [s.stockCode, s]));
     const fallback = status === "REJECT" ? "N11 görevi reddetti" : "N11 sonucu alınamadı";
+    // Sonuç hiç gelmediyse ürün N11'de açılmış olabilir: stok güncellenmeye devam etsin (yoksa gönderim hata verir)
+    const unknown = status !== "REJECT" && !(details?.skus.length);
     await db.transaction(async (tx) => {
       if (t.kind === "create") {
         const rows = await tx
@@ -407,7 +417,9 @@ async function checkTasks(client: N11SyncApi, now: Date): Promise<number> {
               res?.ok
                 ? // Yüklemede gönderilen adet o anki stoktu: güncel stok ve fiyat sonraki adımda yeniden gönderilir
                   { status: "active", error: null, pushedQuantity: null, pushedPrice: null, pushError: null }
-                : { status: "failed", error: (res?.reasons.join("; ") || fallback).slice(0, 500) },
+                : unknown
+                  ? { status: "active", error: "N11 sonucu alınamadı; ürün N11'de görünmüyorsa yeniden gönderin", pushedQuantity: null, pushedPrice: null }
+                  : { status: "failed", error: (res?.reasons.join("; ") || fallback).slice(0, 500) },
             )
             .where(and(eq(marketplaceListings.channel, CHANNEL), eq(marketplaceListings.stockCode, r.stockCode)));
         }
