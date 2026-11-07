@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { PageHeader } from "@/components/admin/ui";
+import { ButtonLink } from "@/components/ui/form";
 import { formatPrice } from "@/lib/money";
 import { requireAdmin } from "@/server/auth/current";
 import { getSettings } from "@/server/services/settings";
@@ -15,7 +16,15 @@ export default async function SettingsPage() {
   const s = await getSettings();
   return (
     <>
-      <PageHeader title="Ayarlar" description="Değişiklikler kaydedilince vitrinde hemen geçerli olur ve işlem günlüğüne yazılır." />
+      <PageHeader
+        title="Ayarlar"
+        description="Değişiklikler kaydedilince vitrinde hemen geçerli olur ve işlem günlüğüne yazılır."
+        actions={
+          <ButtonLink href="/yonetim/ayarlar/bildirimler" variant="secondary">
+            Telefon bildirimleri
+          </ButtonLink>
+        }
+      />
       <SettingsForm
         action={saveSettingsAction}
         initial={{
