@@ -4,13 +4,14 @@
 import "dotenv/config";
 import { pool } from "@/server/db";
 import { describeError } from "@/server/log";
-import { N11Client, n11Config } from "@/server/marketplaces/n11/client";
+import { N11Client } from "@/server/marketplaces/n11/client";
+import { n11ConfigAsync } from "@/server/marketplaces/n11";
 import { dispatchPending } from "@/server/notifications/dispatch";
 import { runN11Sync } from "@/server/services/marketplace-sync";
 
 let exitCode = 0;
 try {
-  const cfg = n11Config();
+  const cfg = await n11ConfigAsync();
   if (!cfg) {
     console.log("[n11] bağlantı tanımlı değil; atlandı");
   } else {

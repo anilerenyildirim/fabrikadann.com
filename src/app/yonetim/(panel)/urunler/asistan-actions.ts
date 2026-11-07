@@ -17,7 +17,7 @@ export async function suggestAction(rawId: unknown): Promise<{ suggestion?: Sugg
   if (!id.success) return { error: "Ürün bulunamadı. Sayfayı yenileyin." };
   const limited = await rateLimit(`ai-asistan:${ctx.actorId}`, 60, 3600);
   if (!limited.ok) return { error: `Saatlik öneri sınırına ulaşıldı. ${Math.ceil(limited.retryAfter / 60)} dakika sonra yeniden deneyin.` };
-  const n11 = n11ClientOrError();
+  const n11 = await n11ClientOrError();
   try {
     return { suggestion: await suggestForProduct(ctx, id.data, { n11: "client" in n11 ? n11.client : null }) };
   } catch (e) {

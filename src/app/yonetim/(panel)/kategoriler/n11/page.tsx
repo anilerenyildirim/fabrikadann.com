@@ -4,8 +4,7 @@ import { N11CategoryList } from "@/components/admin/N11CategoryList";
 import { Empty, PageHeader } from "@/components/admin/ui";
 import { FormNotice } from "@/components/ui/form";
 import { requireAdmin } from "@/server/auth/current";
-import { N11_NOT_CONFIGURED } from "@/server/marketplaces/n11";
-import { n11Config } from "@/server/marketplaces/n11/client";
+import { N11_NOT_CONFIGURED, n11ConfigAsync } from "@/server/marketplaces/n11";
 import { getCategoryMappings, n11CategoryCount } from "@/server/services/admin/n11";
 import {
   deleteN11MappingAction,
@@ -22,7 +21,7 @@ export default async function N11CategoriesPage() {
   const [rows, count] = await Promise.all([getCategoryMappings(), n11CategoryCount()]);
   let configError: string | null = null;
   try {
-    if (!n11Config()) configError = N11_NOT_CONFIGURED;
+    if (!(await n11ConfigAsync())) configError = N11_NOT_CONFIGURED;
   } catch (e) {
     configError = e instanceof Error ? e.message : "N11 ayarları hatalı.";
   }

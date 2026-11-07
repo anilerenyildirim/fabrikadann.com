@@ -64,7 +64,7 @@ export function PhotoStartForm({
           malzeme, kategori, renk ve N11 özelliklerini önerir, siz seçip uygularsınız.
         </p>
       </div>
-      {!enabled && <FormNotice tone="info">AI Asistan kapalı: sunucuda ANTHROPIC_API_KEY tanımlayın. Fotoğraflarla taslak yine açılır.</FormNotice>}
+      {!enabled && <FormNotice tone="info">AI Asistan kapalı: Ayarlar &gt; API anahtarları&apos;ndan Claude anahtarını girin. Fotoğraflarla taslak yine açılır.</FormNotice>}
       {error && <FormNotice>{error}</FormNotice>}
       <div className="grid gap-5 sm:grid-cols-2">
         <SelectField label="Üretici" name="uretici" value={manufacturerId} onChange={(e) => setManufacturerId(e.currentTarget.value)}>

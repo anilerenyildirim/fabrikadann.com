@@ -128,7 +128,7 @@ test("anahtar yoksa asistan kapalı", async () => {
   const admin = await makeUser({ role: "admin" });
   const { product } = await productWithImages(1);
   delete process.env.ANTHROPIC_API_KEY;
-  await expect(suggestForProduct({ actorId: admin.id }, product.id, { n11: null })).rejects.toThrow(/ANTHROPIC_API_KEY/);
+  await expect(suggestForProduct({ actorId: admin.id }, product.id, { n11: null })).rejects.toThrow(/API anahtarları/);
 });
 
 test("SDK yapılandırılmış çıktıyı çözemezse anlaşılır hata ve kullanım yine günlüğe", async () => {

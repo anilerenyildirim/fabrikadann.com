@@ -1,7 +1,7 @@
 import { schema, type DbOrTx } from "@/server/db";
 
 export type NotificationKind = (typeof schema.notificationKind.enumValues)[number];
-export type NotificationSource = "site" | "trendyol" | "n11" | "hepsiburada";
+export type NotificationSource = "site" | "trendyol" | "n11" | "hepsiburada" | "system";
 
 export type NotificationInput = {
   kind: NotificationKind;

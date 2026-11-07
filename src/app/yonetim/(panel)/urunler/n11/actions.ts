@@ -16,7 +16,7 @@ export async function sendToN11Action(rawId: unknown): Promise<SendOneState> {
   if (!id.success) return { error: "Gönderilecek ürünü seçin." };
   const limited = await rateLimit(`n11-gonder:${ctx.actorId}`, 200, 3600);
   if (!limited.ok) return { error: `Çok sık gönderim yapıldı. ${limited.retryAfter} saniye sonra yeniden deneyin.` };
-  const c = n11ClientOrError();
+  const c = await n11ClientOrError();
   if ("error" in c) return { error: c.error };
   try {
     const result = await sendProductToN11(ctx, c.client, id.data);

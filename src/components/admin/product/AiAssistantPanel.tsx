@@ -136,7 +136,7 @@ export function AiAssistantPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      {!enabled && <FormNotice tone="info">AI Asistan kapalı: sunucuda ANTHROPIC_API_KEY tanımlayın.</FormNotice>}
+      {!enabled && <FormNotice tone="info">AI Asistan kapalı: Ayarlar &gt; API anahtarları&apos;ndan Claude anahtarını girin.</FormNotice>}
       {enabled && !hasImages && <p className="text-[0.8125rem] text-graphite">Önce aşağıdan renk ve görsel ekleyin; asistan fotoğraflara bakarak öneri yapar.</p>}
       {error && <FormNotice>{error}</FormNotice>}
       {done && <FormNotice tone="info">{done}</FormNotice>}

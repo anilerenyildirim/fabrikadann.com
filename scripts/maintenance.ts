@@ -10,6 +10,7 @@ import { pruneSessions } from "@/server/auth/session";
 import { pruneRateLimits } from "@/server/auth/rate-limit";
 import { applyRetention } from "@/server/services/retention";
 import { dispatchPending, pruneNotifications } from "@/server/notifications/dispatch";
+import { checkIntegrationsIfDue } from "@/server/integrations/health";
 
 let reconciled = 0;
 if (process.env.PAYMENT_PROVIDER === "iyzico") {
@@ -21,6 +22,11 @@ await pruneSessions();
 await pruneRateLimits();
 // KVKK: saklama süresi dolan kişisel veriler (aydınlatma metnindeki sürelerle)
 const retention = await applyRetention();
+// API anahtarları: saatte bir deneme ve son kullanma uyarısı (bildirim kutusuna yazar)
+const integrationsChecked = await checkIntegrationsIfDue().catch((e) => {
+  console.error("[bakım] anahtar kontrolü başarısız:", e instanceof Error ? e.message : e);
+  return false;
+});
 // Kaçan anlık bildirimler (ör. push servisi o an yanıt vermedi) en geç 5 dakikada gider
 const pushed = await dispatchPending().catch((e) => {
   console.error("[bakım] bildirim gönderilemedi:", e instanceof Error ? e.message : e);
@@ -29,6 +35,6 @@ const pushed = await dispatchPending().catch((e) => {
 const prunedNotifications = await pruneNotifications();
 console.log(
   `[bakım] ${new Date().toISOString()} mutabakat: ${reconciled}, süresi dolan sipariş: ${released}, ` +
-    `imha: ${JSON.stringify(retention)}, bildirim: ${JSON.stringify(pushed)}, eski bildirim: ${prunedNotifications}`,
+    `imha: ${JSON.stringify(retention)}, bildirim: ${JSON.stringify(pushed)}, eski bildirim: ${prunedNotifications}, anahtar kontrolü: ${integrationsChecked}`,
 );
 await pool.end();

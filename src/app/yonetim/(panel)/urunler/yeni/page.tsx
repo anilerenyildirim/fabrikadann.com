@@ -3,6 +3,7 @@ import { PhotoStartForm } from "@/components/admin/product/PhotoStartForm";
 import { ProductInfoForm } from "@/components/admin/product/ProductInfoForm";
 import { PageHeader } from "@/components/admin/ui";
 import { requireAdmin } from "@/server/auth/current";
+import { getSecret } from "@/server/secrets";
 import { categoryOptions } from "@/server/services/admin/catalog";
 import { manufacturerOptions } from "@/server/services/admin/manufacturers";
 import { createProductAction, uploadImageAction } from "../actions";
@@ -25,7 +26,7 @@ export default async function NewProductPage() {
           start={startDraftAction}
           upload={uploadImageAction}
           manufacturers={manufacturers}
-          enabled={!!process.env.ANTHROPIC_API_KEY?.trim()}
+          enabled={!!(await getSecret("ANTHROPIC_API_KEY"))}
         />
       </div>
       <h2 className="label mb-4">Ya da elle girin</h2>

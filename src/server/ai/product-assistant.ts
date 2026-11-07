@@ -6,6 +6,7 @@ import { db, schema } from "@/server/db";
 import type { MarketplaceAttr } from "@/server/db/schema";
 import type { N11Attribute } from "@/server/marketplaces/n11/client";
 import { readMedia } from "@/server/storage/images";
+import { getSecret } from "@/server/secrets";
 import { audit } from "@/server/services/audit";
 import { assertAdmin, type AdminContext } from "@/server/services/admin/context";
 import type { N11Api } from "@/server/services/admin/n11";
@@ -120,9 +121,11 @@ function describeAttributes(attrs: N11Attribute[]) {
     .join("\n");
 }
 
-function assistantClient(): AssistantClient {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!key) throw new AiAssistantError("AI Asistan kapalı: sunucuda ANTHROPIC_API_KEY tanımlayın.");
+export const AI_DISABLED = "AI Asistan kapalı: Ayarlar > API anahtarları'ndan Claude anahtarını girin.";
+
+async function assistantClient(): Promise<AssistantClient> {
+  const key = await getSecret("ANTHROPIC_API_KEY");
+  if (!key) throw new AiAssistantError(AI_DISABLED);
   // Cloudflare istekleri 100 sn'de keser: çağrı ve tek yeniden deneme bunun altında kalsın
   return new Anthropic({ apiKey: key, timeout: 80_000, maxRetries: 0 }) as unknown as AssistantClient;
 }
@@ -148,7 +151,7 @@ export async function suggestForProduct(
     if (keys.length) picked.push({ colorId: c.id, colorName: c.name, keys });
   }
   if (total === 0) throw new AiAssistantError("Önce ürüne renk ve görsel ekleyin; asistan fotoğraflara bakarak öneri yapar.");
-  const client = deps.client ?? assistantClient();
+  const client = deps.client ?? (await assistantClient());
 
   const categories = await db.select({ id: schema.categories.id, name: schema.categories.name }).from(schema.categories).orderBy(asc(schema.categories.position));
   let n11Attributes: N11Attribute[] = [];
@@ -197,7 +200,7 @@ export async function suggestForProduct(
     });
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) failure = new AiAssistantError("AI Asistan şu an yoğun. Bir dakika sonra yeniden deneyin.");
-    else if (e instanceof Anthropic.AuthenticationError) failure = new AiAssistantError("AI Asistan anahtarı geçersiz. Sunucudaki ANTHROPIC_API_KEY'i kontrol edin.");
+    else if (e instanceof Anthropic.AuthenticationError) failure = new AiAssistantError("AI Asistan anahtarı geçersiz ya da süresi dolmuş. Ayarlar > API anahtarları'ndan yenisini girin.");
     else if (e instanceof Anthropic.APIConnectionTimeoutError) failure = new AiAssistantError("AI Asistan zamanında yanıt vermedi. Daha az fotoğrafla ya da biraz sonra yeniden deneyin.");
     else if (e instanceof Anthropic.APIError) failure = new AiAssistantError(`AI Asistan yanıt vermedi (${e.status ?? "bağlantı"}). Biraz sonra yeniden deneyin.`);
     // Yanıt geldi ama şemaya uymadı (ret metni, yarım kalan yanıt): ücretlendirilmiş olabilir

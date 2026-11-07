@@ -2,7 +2,8 @@ import { and, asc, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, pool, schema, type Tx } from "@/server/db";
 import type { MarketplaceLine } from "@/server/db/schema";
 import { describeError } from "@/server/log";
-import { N11Error, n11Config, type N11Client, type N11Package } from "@/server/marketplaces/n11/client";
+import { N11Error, type N11Client, type N11Package } from "@/server/marketplaces/n11/client";
+import { n11ConfigAsync } from "@/server/marketplaces/n11";
 import { n11PriceOf } from "@/server/marketplaces/n11/listing";
 import { enqueueNotification } from "@/server/notifications/outbox";
 import { noteStockDrop } from "@/server/notifications/stock-alert";
@@ -520,7 +521,7 @@ export async function getN11Status() {
   let configured = false;
   let configError: string | null = null;
   try {
-    configured = n11Config() !== null;
+    configured = (await n11ConfigAsync()) !== null;
   } catch (e) {
     configError = e instanceof Error ? e.message : "N11 ayarları hatalı";
   }

@@ -3,8 +3,7 @@ import Link from "next/link";
 import { N11SendForm } from "@/components/admin/N11SendForm";
 import { Empty, PageHeader } from "@/components/admin/ui";
 import { requireAdmin } from "@/server/auth/current";
-import { N11_NOT_CONFIGURED } from "@/server/marketplaces/n11";
-import { n11Config } from "@/server/marketplaces/n11/client";
+import { N11_NOT_CONFIGURED, n11ConfigAsync } from "@/server/marketplaces/n11";
 import { listN11Products } from "@/server/services/admin/n11";
 import { getSettings } from "@/server/services/settings";
 import { sendToN11Action } from "./actions";
@@ -16,7 +15,7 @@ export default async function N11ProductsPage() {
   const [products, settings] = await Promise.all([listN11Products(), getSettings()]);
   let blocked: string | null = null;
   try {
-    if (!n11Config()) blocked = N11_NOT_CONFIGURED;
+    if (!(await n11ConfigAsync())) blocked = N11_NOT_CONFIGURED;
   } catch (e) {
     blocked = e instanceof Error ? e.message : "N11 ayarları hatalı.";
   }

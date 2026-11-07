@@ -14,7 +14,7 @@ const PATH = "/yonetim/kategoriler/n11";
 
 export async function refreshN11CategoriesAction(_prev: FormState, _form: FormData): Promise<FormState> {
   const ctx = await adminContext();
-  const c = n11ClientOrError();
+  const c = await n11ClientOrError();
   if ("error" in c) return { error: c.error };
   try {
     const n = await refreshN11Categories(ctx, c.client);
@@ -38,7 +38,7 @@ export async function n11AttributesAction(externalId: unknown): Promise<{ attrib
   if (!id.success) return { error: "N11 kategorisini listeden seçin." };
   const limited = await rateLimit(`n11-ozellik:${ctx.actorId}`, 300, 3600);
   if (!limited.ok) return { error: "Çok sık denendi. Biraz sonra yeniden deneyin." };
-  const c = n11ClientOrError();
+  const c = await n11ClientOrError();
   if ("error" in c) return { error: c.error };
   try {
     return { attributes: await getMappingAttributes(ctx, c.client, id.data) };
@@ -49,7 +49,7 @@ export async function n11AttributesAction(externalId: unknown): Promise<{ attrib
 
 export async function saveN11MappingAction(raw: unknown): Promise<{ ok?: true; error?: string }> {
   const ctx = await adminContext();
-  const c = n11ClientOrError();
+  const c = await n11ClientOrError();
   if ("error" in c) return { error: c.error };
   try {
     await saveCategoryMapping(ctx, c.client, raw as Parameters<typeof saveCategoryMapping>[2]);

@@ -18,6 +18,7 @@ import { FormNotice } from "@/components/ui/form";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { formatPrice } from "@/lib/money";
 import { requireAdmin } from "@/server/auth/current";
+import { getSecret } from "@/server/secrets";
 import { categoryOptions, getAdminProduct, publishProblem, type ProductStatus } from "@/server/services/admin/catalog";
 import { manufacturerOptions } from "@/server/services/admin/manufacturers";
 import { adjustStockAction } from "../../stok/actions";
@@ -78,7 +79,7 @@ export default async function EditProductPage({ params, searchParams }: Props) {
   const isNew = sp.yeni === "1";
   const assistantAuto = sp.asistan === "1";
   const missingPhotos = sp.eksik === "1";
-  const aiEnabled = !!process.env.ANTHROPIC_API_KEY?.trim();
+  const aiEnabled = !!(await getSecret("ANTHROPIC_API_KEY"));
   const hasImages = product.colors.some((c) => c.images.length > 0);
 
   return (
