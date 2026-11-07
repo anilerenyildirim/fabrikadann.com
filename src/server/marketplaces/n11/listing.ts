@@ -25,6 +25,8 @@ export type ListingInput = {
     }[];
   };
   mapping: { externalCategoryId: number; attributes: MarketplaceAttr[] };
+  /** Ürüne özel özellikler (AI Asistan ya da yönetici); aynı özellikte kategori eşlemesindekini ezer */
+  productAttributes?: MarketplaceAttr[];
   /** Eşlenen N11 kategorisinin özellikleri (N11'den okunur) */
   attributes: N11Attribute[];
   settings: N11Settings;
@@ -101,7 +103,9 @@ export function buildSkus(input: ListingInput): { skus: N11Sku[]; problems: List
   const auto = new Set([brand?.id, color?.id, size?.id].filter((x): x is number => x !== undefined));
 
   // Kategoriye sabit özellikler (eşleştirmeden) + marka + ürün güvenliği alanları
-  const fixed: N11Sku["attributes"] = mapping.attributes
+  const own = input.productAttributes ?? [];
+  const merged = [...mapping.attributes.filter((a) => !own.some((o) => o.id === a.id)), ...own];
+  const fixed: N11Sku["attributes"] = merged
     .filter((a) => !auto.has(a.id) && attributes.some((x) => x.id === a.id))
     .map((a) => ({ id: a.id, valueId: a.valueId, customValue: a.valueId === null ? a.customValue : null }));
   if (brand) {

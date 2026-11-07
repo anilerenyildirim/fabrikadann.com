@@ -254,6 +254,7 @@ export async function sendProductToN11(ctx: AdminContext, api: N11Api, productId
       })),
     },
     mapping: { externalCategoryId: mapping.externalCategoryId, attributes: mapping.attributes },
+    productAttributes: product.marketplaceAttrs?.n11 ?? [],
     attributes,
     settings,
     company: { name: settings.companyName, address: settings.companyAddress, email: settings.email },

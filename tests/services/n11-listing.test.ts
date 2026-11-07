@@ -138,3 +138,17 @@ test("en fazla 8 görsel, başlık en fazla 100 karakter, renk adı başlıkta v
 test("only verilirse yalnız o SKU'lar", () => {
   expect(buildSkus(input({ only: new Set(["BOT-S-385"]) })).skus.map((s) => s.stockCode)).toEqual(["BOT-S-385"]);
 });
+
+test("ürüne özel özellik kategori özelliğini ezer, yenisini ekler", () => {
+  const i = input({
+    attributes: [...attrs, { id: 7794, name: "Topuk Tipi", mandatory: false, variant: false, slicer: false, custom: true, values: [] }],
+  });
+  i.productAttributes = [
+    { id: 22, name: "Cinsiyet", valueId: 7, customValue: null },
+    { id: 7794, name: "Topuk Tipi", valueId: null, customValue: "Blok" },
+  ];
+  i.mapping.attributes = [{ id: 22, name: "Cinsiyet", valueId: 7, customValue: null }];
+  const a = buildSkus(i).skus[0]!.attributes;
+  expect(a.filter((x) => x.id === 22)).toHaveLength(1);
+  expect(a).toContainEqual({ id: 7794, valueId: null, customValue: "Blok" });
+});
