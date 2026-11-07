@@ -15,7 +15,7 @@ const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp", "avif"]);
 
 // Anahtar biçimi: "p/<uuid>" — dosya yolu buradan türetilir, dışarıdan gelen yol kullanılmaz
 const KEY_RE = /^p\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const FILE_RE = /^p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(400|800|1200|1600)\.webp$/;
+const FILE_RE = /^p\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(400|800|1200|1600)\.(webp|jpg)$/;
 
 export class ImageError extends Error {}
 
@@ -82,19 +82,31 @@ export async function deleteProductImage(key: string): Promise<void> {
   await Promise.all(IMAGE_WIDTHS.map((w) => rm(fileFor(id, w), { force: true })));
 }
 
-/** "/medya/p/<uuid>-800.webp" isteği için dosya; biçim tutmazsa null. */
-export async function readMediaFile(relative: string): Promise<Buffer | null> {
+/**
+ * "/medya/p/<uuid>-800.webp" isteği için dosya; biçim tutmazsa null. ".jpg" istenirse aynı WebP JPEG'e çevrilir
+ * (pazaryerleri WebP kabul etmeyebilir; sonuç değişmez, route uzun süre önbellekletir).
+ */
+export async function readMedia(relative: string): Promise<{ body: Buffer; contentType: string } | null> {
   const m = FILE_RE.exec(relative);
   if (!m) return null;
+  let file: Buffer;
   try {
-    return await readFile(fileFor(m[1]!, Number(m[2])));
+    file = await readFile(fileFor(m[1]!, Number(m[2])));
   } catch {
     return null;
   }
+  if (m[3] === "webp") return { body: file, contentType: "image/webp" };
+  const body = await sharp(file).flatten({ background: "#ffffff" }).jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+  return { body, contentType: "image/jpeg" };
 }
 
 export function mediaUrl(key: string, width: ImageWidth): string {
   return `/medya/${key}-${width}.webp`;
+}
+
+/** Pazaryerlerine gönderilen JPEG adresi (göreli; APP_URL ile birleştirilir). */
+export function mediaJpegUrl(key: string, width: ImageWidth): string {
+  return `/medya/${key}-${width}.jpg`;
 }
 
 export function mediaSrcSet(key: string, originalWidth: number): string {
