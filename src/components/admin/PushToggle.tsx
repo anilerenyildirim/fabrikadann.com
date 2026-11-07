@@ -17,6 +17,10 @@ function keyBytes(base64url: string) {
   return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("zaman aşımı")), ms))]);
+}
+
 async function detect(): Promise<Status> {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const standalone =
@@ -50,9 +54,13 @@ export function PushToggle({ vapidKey, actions }: { vapidKey: string; actions: A
       }
       const reg = await navigator.serviceWorker.register("/yonetim/sw.js", { scope: "/yonetim/", updateViaCache: "none" });
       await navigator.serviceWorker.ready;
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidKey) }));
+      // Tarayıcının push servisi yanıt vermezse düğme sonsuza dek beklemesin
+      const sub = await withTimeout(
+        (async () =>
+          (await reg.pushManager.getSubscription()) ??
+          (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(vapidKey) })))(),
+        20000,
+      );
       const res = await actions.subscribe(sub.toJSON());
       if ("error" in res) {
         await sub.unsubscribe().catch(() => false);
@@ -62,7 +70,7 @@ export function PushToggle({ vapidKey, actions }: { vapidKey: string; actions: A
       setStatus("on");
       router.refresh();
     } catch {
-      setError("Bildirimler açılamadı. Sayfayı yenileyip yeniden deneyin.");
+      setError("Bildirimler açılamadı: tarayıcı bildirim servisine bağlanamadı. İnternet bağlantınızı kontrol edip sayfayı yenileyin, yeniden deneyin.");
     } finally {
       setBusy(false);
     }
